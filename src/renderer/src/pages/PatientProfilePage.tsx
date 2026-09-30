@@ -156,7 +156,7 @@ export default function PatientProfilePage(): JSX.Element {
             </button>
           ) : null}
           {perms.has('appointment.create') ? (
-            <button className="btn btn-secondary" onClick={() => nav('/appointments')}>
+            <button className="btn btn-secondary" onClick={() => nav(`/appointments?patient=${patient.id}`)}>
               <CalendarPlus size={16} /> Book appointment
             </button>
           ) : null}

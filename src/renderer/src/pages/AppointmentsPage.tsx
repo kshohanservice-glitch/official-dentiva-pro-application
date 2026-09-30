@@ -1,7 +1,7 @@
 /** Appointments: day & week views, conflict-safe booking, status changes. */
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Calendar, ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import type { AppointmentRecord, DentistRecord } from '@shared/types';
@@ -47,6 +47,17 @@ export default function AppointmentsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // Captured once so clearing the URL param does not drop the prefill mid-flight.
+  const [contextPatientId] = useState<number | null>(() => Number(searchParams.get('patient')) || null);
+
+  useEffect(() => {
+    if (contextPatientId) {
+      setCreateOpen(true);
+      setSearchParams({}, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- consume once on mount
+  }, []);
   const [detail, setDetail] = useState<AppointmentRecord | null>(null);
   const [cancelTarget, setCancelTarget] = useState<AppointmentRecord | null>(null);
   const [canCreate, setCanCreate] = useState(false);
@@ -217,6 +228,7 @@ export default function AppointmentsPage(): JSX.Element {
 
       {createOpen ? (
         <AppointmentModal
+          initialPatientId={contextPatientId}
           dentists={dentists}
           defaultDate={anchor}
           onClose={() => setCreateOpen(false)}
@@ -300,6 +312,7 @@ function AppointmentModal(props: {
   defaultDate: string;
   onClose(): void;
   onSaved(): void;
+  initialPatientId?: number | null;
 }): JSX.Element {
   const [patients, setPatients] = useState<{ id: number; fullName: string; patientCode: string; phone: string }[]>([]);
   const [query, setQuery] = useState('');
@@ -323,6 +336,18 @@ function AppointmentModal(props: {
     }, query ? 250 : 0);
     return () => clearTimeout(t);
   }, [query]);
+
+  // Patient-context booking: prefill the patient passed via ?patient=.
+  useEffect(() => {
+    const id = props.initialPatientId;
+    if (!id) return;
+    void api('patients.get', { id })
+      .then((p) => {
+        setPatientId(p.id);
+        setPatientLabel(`${p.fullName} (${p.patientCode})`);
+      })
+      .catch(() => undefined);
+  }, [props.initialPatientId]);
 
   const startsAt = useMemo(() => {
     const [h, m] = time.split(':').map(Number);
