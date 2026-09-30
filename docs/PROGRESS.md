@@ -26,7 +26,7 @@ the exact next action.
 | 15. CI workflows (PR gates, windows packaging, release) | DONE | `.github/workflows/ci.yml` (windows-latest gate + artifact) and `release.yml` (tag → installer → checksums → GH Release, fallback `release-artifacts` branch). |
 | 16. Full audit cycle (source/UX/functional/DB/permission/security/print/backup) | DONE | Findings recorded in `docs/QA.md` §2; all fixed and regression-tested. |
 | 17. Second independent review + fixes + regression | DONE | Requirement-by-requirement sweep vs SPECIFICATION §2 (QA.md §3); gaps closed (IA, permissions, integrity tooling, staff photos, Rx templates, reports, search states). |
-| 18. Packaging validation, PR opened (no merge), release readiness statement | IN PROGRESS | PR #1 open (never merge): https://github.com/kshohanservice-glitch/official-dentiva-pro-application/pull/1 — awaiting first Windows CI run + clean-machine checklist before any release claim. |
+| 18. Packaging validation, PR opened (no merge), release readiness statement | DONE | PR #1 open (never merge): https://github.com/kshohanservice-glitch/official-dentiva-pro-application/pull/1 — **Windows CI green** (run 36785200107 on 7ed3bcd: typecheck/lint/67 tests/build/NSIS/validate all pass; installer artifact uploaded). Release claim still gated on the manual Windows checklist + physical print + tagged release run. |
 
 ## Verification log (latest full gate)
 
@@ -51,18 +51,20 @@ the exact next action.
 
 ## Release blockers
 
-1. First successful `ci.yml` run on GitHub (Windows runner) — typecheck/lint/test/
-   package/validate all green.
+1. ~~First successful `ci.yml` run on GitHub (Windows runner)~~ — **CLEARED**:
+   run 36785200107 on `7ed3bcd` green end-to-end (typecheck, lint, 67/67 tests,
+   build, NSIS package, validate-dist); artifact `dentiva-pro-windows-installer`
+   (≈111 MB with SHA256SUMS.txt, 30-day retention).
 2. Manual Windows verification checklist: activation → setup (incl. resume) → login →
    auto-lock (verify it locks while idle) → backup → restore → install → uninstall →
-   restart.
+   restart. *(Needs a person on Windows.)*
 3. E2E on real Windows + at least one real print job (A4 Bengali prescription and
    80 mm thermal receipt).
-4. `docs/QA.md` limitations section must be cleared or re-confirmed before any
-   "production ready" statement.
+4. Exercise `release.yml` on the `v1.0.0` tag (first tagged release) and confirm the
+   GitHub Release publish (or `release-artifacts` branch fallback).
 
 ## Next action
 
-Push is current through the Phase 17 fixes; PR #1 is open for review (never merge
-from the agent). Next: watch the first Windows CI run, execute the manual Windows
-checklist, and only then prepare the tag for release 1.0.0.
+PR #1 is green on CI and **ready for review** (never merge from the agent). Remaining
+work needs a human on a Windows machine: manual checklist + physical prints; then tag
+`v1.0.0` to exercise the release workflow.

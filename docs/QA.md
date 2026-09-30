@@ -121,23 +121,41 @@ schema → session/lock → RBAC), and renderer boot/render smoke.
 | 29 | Data integrity | Complete | Transactions, idempotency-key UNIQUE columns, integer poisha, FK enforcement, startup integrity log |
 | 30 | States & a11y | Complete | Loading/empty/error/denied patterns, error boundary, Escape-to-close modals, Ctrl+K, reduced motion |
 
-## 4. Honest limitations (not verifiable in this environment)
+## 4. CI evidence (Windows runner)
 
-- **Windows CI first run** — `.github/workflows/{ci,release}.yml` have not executed
-  yet on `windows-latest`; treat green local checks as necessary but not sufficient.
-- **Installer** — NSIS packaging requires the Windows runner (no wine here). No local
-  `.exe` was built; `validate-dist.mjs` failing on a missing `dist/` locally is
-  expected. Install/uninstall/upgrade on a clean machine is untested.
+First full Windows CI run on commit `7ed3bcd` — **green** (workflow run 36785200107,
+job "Windows · typecheck, lint, test, package", ~9 min):
+
+1. `npm ci` ✓
+2. `npm run typecheck` ✓
+3. `npm run lint` ✓
+4. `npm test` ✓ — 67/67 on Windows
+5. `npm run build` (electron-vite) ✓
+6. `npx electron-builder --win` — NSIS installer built ✓
+7. `node scripts/validate-dist.mjs` ✓ (structure, required files, license scan,
+   no TODO/FIXME markers)
+8. Artifact uploaded: `dentiva-pro-windows-installer` (≈111 MB; `dist/*.exe` +
+   `dist/SHA256SUMS.txt`, 30-day retention)
+
+## 5. Honest limitations (not verifiable in this environment)
+
+- **Clean-machine install** — the CI installer has not yet been installed,
+  launched, upgraded, and uninstalled on a real Windows machine by a person.
+  The manual checklist (activation → setup resume → login → idle auto-lock →
+  backup → restore → restart → uninstall) remains open.
 - **Physical printing** — no printer hardware here: paper-feed, margins on real
   stock, and "Microsoft Print to PDF" flow are untested. HTML/CSS print output and
   embedded Bengali fonts are verified by construction (base64 woff2) and build tests,
-  not by a physical printout.
+  not by a physical printout (A4 Bengali prescription + 80 mm thermal still pending).
 - **E2E** — Playwright browsers are not installed in this environment; renderer
   coverage comes from jsdom boot/render tests, not full end-to-end journeys.
 - **Performance/stress** — exercised via SQL paging and integer maths review and
   synthetic unit tests; no multi-year, million-row database was used.
 - **Single machine** — multi-user concurrency beyond SQLite WAL + transaction design
   review is untested.
+- **Release workflow** — `release.yml` (tag → installer → checksums → GitHub Release
+  with `release-artifacts` branch fallback) has not been exercised; it should run for
+  the first time on the `v1.0.0` tag.
 
-Do not claim production readiness until CI has run on Windows, the installer has
-been exercised on a clean machine, and a physical print test has been performed.
+Do not claim production readiness until the clean-machine checklist, a physical print
+test, and the tagged release workflow have been completed.
