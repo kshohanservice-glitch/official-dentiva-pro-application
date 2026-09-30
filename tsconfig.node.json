@@ -15,5 +15,5 @@
     "tests/**/*.ts",
     "scripts/**/*.mjs"
   ],
-  "exclude": ["node_modules", "out", "dist"]
+  "exclude": ["node_modules", "out", "dist", "tests/e2e"]
 }

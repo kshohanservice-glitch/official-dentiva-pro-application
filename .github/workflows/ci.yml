@@ -59,3 +59,29 @@ jobs:
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
+
+  e2e:
+    name: Windows · Electron e2e boot
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Rebuild native modules for Electron
+        run: npm run rebuild:electron
+
+      - name: Electron e2e (boot + activation gate via real IPC)
+        run: npm run test:e2e
