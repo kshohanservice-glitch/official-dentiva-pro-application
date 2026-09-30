@@ -137,6 +137,14 @@ job "Windows · typecheck, lint, test, package", ~9 min):
 8. Artifact uploaded: `dentiva-pro-windows-installer` (≈111 MB; `dist/*.exe` +
    `dist/SHA256SUMS.txt`, 30-day retention)
 
+Subsequent run 36786940957 added a second green job — **Windows · Electron e2e
+boot** (`tests/e2e/app-boot.spec.ts`): the built app is launched with an isolated
+temp profile and, over the real preload → dispatcher stack, the suite asserts the
+activation gate renders, the preload bridge exists, `app.status` reports
+unactivated, and `patients.list`/`session.login` are refused with
+`ACTIVATION_REQUIRED` (gate-before-schema proven end-to-end). No activation
+material appears in the suite.
+
 ## 5. Honest limitations (not verifiable in this environment)
 
 - **Clean-machine install** — the CI installer has not yet been installed,
@@ -147,8 +155,11 @@ job "Windows · typecheck, lint, test, package", ~9 min):
   stock, and "Microsoft Print to PDF" flow are untested. HTML/CSS print output and
   embedded Bengali fonts are verified by construction (base64 woff2) and build tests,
   not by a physical printout (A4 Bengali prescription + 80 mm thermal still pending).
-- **E2E** — Playwright browsers are not installed in this environment; renderer
-  coverage comes from jsdom boot/render tests, not full end-to-end journeys.
+- **E2E scope** — the boot/security-gate e2e suite runs green on the Windows CI
+  runner; full user-journey e2e (setup → login → module CRUD) is not automated —
+  it is covered by the manual Windows checklist below. Playwright browsers cannot
+  be downloaded in this sandbox (binary CDNs blocked), which is why suites run in
+  CI rather than locally.
 - **Performance/stress** — exercised via SQL paging and integer maths review and
   synthetic unit tests; no multi-year, million-row database was used.
 - **Single machine** — multi-user concurrency beyond SQLite WAL + transaction design

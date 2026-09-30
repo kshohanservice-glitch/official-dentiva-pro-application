@@ -21,7 +21,7 @@ the exact next action.
 | 10. Renderer: design system + shell + auth/setup flows | DONE | tokens.css + components.css (incl. search dropdown + reduced motion); activation → setup → login → lock gate flow; wizard resumable (no passwords persisted). |
 | 11. Renderer: all feature modules + states + shortcuts | DONE | 24 pages incl. standalone About; exact spec IA; staff photos; Rx templates + reorder; error boundary; global search loading/empty + keyboard nav. |
 | 12. Icon generation script + verification | DONE | `scripts/generate-icons.mjs` (ImageMagick) + committed `resources/icon.ico` (256px multi-res). |
-| 13. Tests: unit + integration + component + e2e | DONE (partial) | **67/67 green**: security, database (incl. profile non-resurrection regression), money, dispatcher gates (14), renderer boot. **Playwright e2e not executed** — no display/browser here. |
+| 13. Tests: unit + integration + component + e2e | DONE | **67/67 unit/integration green** (security, database, money, dispatcher gates, renderer boot) + **e2e boot suite green on Windows CI** (`tests/e2e/app-boot.spec.ts`: real IPC activation gate). |
 | 14. Docs: README, THIRD_PARTY_LICENSES, QA traceability | DONE | License audit 100% permissive; `docs/QA.md` = audit findings + 30-module traceability + honest limitations. |
 | 15. CI workflows (PR gates, windows packaging, release) | DONE | `.github/workflows/ci.yml` (windows-latest gate + artifact) and `release.yml` (tag → installer → checksums → GH Release, fallback `release-artifacts` branch). |
 | 16. Full audit cycle (source/UX/functional/DB/permission/security/print/backup) | DONE | Findings recorded in `docs/QA.md` §2; all fixed and regression-tested. |
@@ -58,8 +58,10 @@ the exact next action.
 2. Manual Windows verification checklist: activation → setup (incl. resume) → login →
    auto-lock (verify it locks while idle) → backup → restore → install → uninstall →
    restart. *(Needs a person on Windows.)*
-3. E2E on real Windows + at least one real print job (A4 Bengali prescription and
-   80 mm thermal receipt).
+3. ~~E2E on real Windows~~ — **boot/security-gate e2e green in CI** (run
+   36786940957, job "Windows · Electron e2e boot"); full-journey automation is not
+   written — the manual checklist covers it. **Physical print still open**: A4
+   Bengali prescription + 80 mm thermal receipt.
 4. Exercise `release.yml` on the `v1.0.0` tag (first tagged release) and confirm the
    GitHub Release publish (or `release-artifacts` branch fallback).
 
