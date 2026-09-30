@@ -3,11 +3,12 @@
  * Contract: src/shared/ipc.ts (channelDefs) — keep this file in exact sync.
  */
 
-import { app, dialog, ipcMain, shell } from 'electron';
+import { app, dialog, shell } from 'electron';
 import type { BrowserWindow } from 'electron';
-import { existsSync, readFileSync } from 'node:fs';
-import { extname } from 'node:path';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { extname, join } from 'node:path';
 import type { IpcDispatcher } from './dispatcher';
+import { ipcError } from './dispatcher';
 import type { ServiceContext } from '../services/context';
 import * as patients from '../services/patients';
 import * as clinical from '../services/clinical';
@@ -170,6 +171,21 @@ export function registerAllChannels(deps: RegistrarDeps): void {
       setSetting('autoLockMinutes', String(r.autoLockMinutes));
       if (r.backupFolder) setSetting('backupFolder', r.backupFolder);
       setSetting('defaultPaperSize', r.paperSize);
+      if (r.suggestedPrinters) {
+        const profiles = (db.prepare('SELECT COUNT(*) AS n FROM printer_profiles').get() as { n: number }).n;
+        if (profiles === 0) {
+          const insProf = db.prepare(
+            `INSERT INTO printer_profiles
+              (name, doc_type, printer_name, paper_size, orientation, margin_top_mm, margin_bottom_mm, margin_left_mm, margin_right_mm, scale_percent, copies, is_default)
+             VALUES (?, ?, NULL, ?, 'portrait', ?, ?, ?, ?, 100, 1, ?)`,
+          );
+          insProf.run('Prescription A4', 'prescription', 'A4', 14, 14, 14, 14, 1);
+          insProf.run('Prescription A5', 'prescription', 'A5', 10, 10, 10, 10, 0);
+          insProf.run('Thermal Prescription 80mm', 'prescription', 'thermal80', 4, 4, 3, 3, 0);
+          insProf.run('Invoice A4', 'invoice', 'A4', 14, 14, 14, 14, 1);
+          insProf.run('Invoice Thermal 80mm', 'invoice', 'thermal80', 4, 4, 3, 3, 0);
+        }
+      }
       if (r.printerName) {
         db.prepare('UPDATE printer_profiles SET printer_name = ? WHERE is_default = 1').run(r.printerName);
       }
@@ -329,6 +345,21 @@ export function registerAllChannels(deps: RegistrarDeps): void {
   dispatcher.register('clinic.update', (req, c) =>
     platform.updateClinicConfig(sc(c), req as ChannelRequest<'clinic.update'>),
   );
+  dispatcher.register('setup.pickLogo', async (_req, c) => {
+    const svcCtx = sc(c);
+    const users = (svcCtx.db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }).n;
+    if (users > 0) ipcError('FORBIDDEN', 'Setup has already been completed.');
+    const win = deps.getWindow();
+    if (!win) return platform.getClinicConfig(svcCtx);
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Choose clinic logo',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'svg', 'webp'] }],
+    });
+    if (res.canceled || !res.filePaths[0]) return platform.getClinicConfig(svcCtx);
+    return platform.setClinicLogo(svcCtx, res.filePaths[0]);
+  });
+
   dispatcher.register('clinic.pickLogo', async (_req, c) => {
     const win = deps.getWindow();
     if (!win) return platform.getClinicConfig(sc(c));
@@ -737,9 +768,18 @@ export function registerAllChannels(deps: RegistrarDeps): void {
     return { saved: result.saved, path: result.path };
   });
 
-  void ipcMain;
-  void seedReferenceData;
-  void integrityCheck;
+  dispatcher.register('database.integrity', (_req, c) => {
+    const svcCtx = sc(c);
+    const res = integrityCheck(svcCtx.db);
+    const dbPath = join(svcCtx.userDataDir, 'dentiva.db');
+    const sizeBytes = statSync(dbPath, { throwIfNoEntry: false })?.size ?? 0;
+    const walSizeBytes = statSync(`${dbPath}-wal`, { throwIfNoEntry: false })?.size ?? 0;
+    const pageCount = (
+      svcCtx.db.prepare('PRAGMA page_count').get() as { page_count: number } | undefined
+    )?.page_count ?? 0;
+    const foreignKeyViolations = (svcCtx.db.pragma('foreign_key_check') as unknown[]).length;
+    return { ...res, sizeBytes, walSizeBytes, pageCount, foreignKeyViolations };
+  });
 }
 
 export type DocPayload = ReturnType<typeof buildDocPayload>;

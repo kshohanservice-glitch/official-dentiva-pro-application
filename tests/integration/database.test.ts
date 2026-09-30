@@ -139,7 +139,15 @@ describe('seed', () => {
     expect(first.teeth).toBe(52); // 32 permanent + 20 primary
     expect(first.roles).toBeGreaterThanOrEqual(6);
     expect(first.treatments).toBeGreaterThanOrEqual(20);
-    expect(first.profiles).toBe(5);
+    // Printer profiles are created by setup.complete per the wizard's choice;
+    // reference seeding must NOT create (or resurrect) them.
+    expect(first.profiles).toBe(0);
+
+    // Regression: deleting every profile must survive further seed runs.
+    db.prepare('DELETE FROM printer_profiles').run();
+    seedReferenceData(db, Date.now());
+    const afterDelete = (db.prepare('SELECT COUNT(*) AS n FROM printer_profiles').get() as { n: number }).n;
+    expect(afterDelete).toBe(0);
   });
 
   it('builds a complete FDI dentition (32 permanent + 20 primary)', () => {

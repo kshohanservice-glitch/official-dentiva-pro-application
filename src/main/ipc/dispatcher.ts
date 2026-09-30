@@ -28,6 +28,7 @@ export class IpcDispatcher {
     'app.status',
     'activation.verify',
     'setup.complete',
+    'setup.pickLogo', // setup wizard only — handler rejects once a user exists
     'session.state',
     'session.login',
   ]);

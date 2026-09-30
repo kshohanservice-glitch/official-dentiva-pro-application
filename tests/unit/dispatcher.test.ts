@@ -76,6 +76,10 @@ function makeDispatcher(): {
     called.push('dashboard.get');
     return {};
   });
+  dispatcher.register('setup.pickLogo', () => {
+    called.push('setup.pickLogo');
+    return { logoPath: null } as never;
+  });
   return { dispatcher, state, called };
 }
 
@@ -93,6 +97,7 @@ describe('dispatcher license activation gate', () => {
     }));
     dispatcher.register('patients.list', () => ({ items: [], total: 0, page: 1, pageSize: 25 }));
     dispatcher.register('activation.verify', () => ({ activated: false }));
+    dispatcher.register('setup.pickLogo', () => ({ logoPath: null } as never));
     dispatcher.register('app.status', () => ({
       phase: 'activation' as const,
       activated: false,
@@ -121,6 +126,12 @@ describe('dispatcher license activation gate', () => {
 
   it('blocks data channels before activation', async () => {
     const res = await makeUnactivatedDispatcher().dispatch('patients.list', {});
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.code).toBe('ACTIVATION_REQUIRED');
+  });
+
+  it('blocks setup.pickLogo before activation (wizard logo comes after activation)', async () => {
+    const res = await makeUnactivatedDispatcher().dispatch('setup.pickLogo', {});
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('ACTIVATION_REQUIRED');
   });
@@ -196,6 +207,14 @@ describe('dispatcher session/lock gates', () => {
     const res = await dispatcher.dispatch('patients.list', {});
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.code).toBe('FORBIDDEN');
+  });
+
+  it('allows setup.pickLogo without a session (wizard runs pre-login)', async () => {
+    const { dispatcher, state, called } = makeDispatcher();
+    state.authed = false;
+    const res = await dispatcher.dispatch('setup.pickLogo', {});
+    expect(res.ok).toBe(true);
+    expect(called).toContain('setup.pickLogo');
   });
 
   it('rejects unknown channels', async () => {

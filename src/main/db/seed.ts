@@ -300,20 +300,8 @@ export function seedReferenceData(db: DB, now: number): void {
       }
     }
 
-    // Printer profiles (sane defaults)
-    const profileCount = (db.prepare('SELECT COUNT(*) AS n FROM printer_profiles').get() as { n: number }).n;
-    if (profileCount === 0) {
-      const insProf = db.prepare(
-        `INSERT INTO printer_profiles
-          (name, doc_type, printer_name, paper_size, orientation, margin_top_mm, margin_bottom_mm, margin_left_mm, margin_right_mm, scale_percent, copies, is_default)
-         VALUES (?, ?, NULL, ?, 'portrait', ?, ?, ?, ?, 100, 1, ?)`,
-      );
-      insProf.run('Prescription A4', 'prescription', 'A4', 14, 14, 14, 14, 1);
-      insProf.run('Prescription A5', 'prescription', 'A5', 10, 10, 10, 10, 0);
-      insProf.run('Thermal Prescription 80mm', 'prescription', 'thermal80', 4, 4, 3, 3, 0);
-      insProf.run('Invoice A4', 'invoice', 'A4', 14, 14, 14, 14, 1);
-      insProf.run('Invoice Thermal 80mm', 'invoice', 'thermal80', 4, 4, 3, 3, 0);
-    }
+    // Printer profiles are created by setup.complete per the wizard's suggested-profiles
+    // choice — NOT re-seeded here, so deleting a profile is respected across restarts.
 
     // Clinic config row
     db.prepare(

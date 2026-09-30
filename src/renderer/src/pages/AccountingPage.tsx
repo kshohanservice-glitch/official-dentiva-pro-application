@@ -1,6 +1,7 @@
 /** Accounting: expenses (with categories) and other income — kept distinct from revenue. */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Plus, Pencil, BookOpen } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import {
@@ -40,6 +41,7 @@ export default function AccountingPage(): JSX.Element {
   }, []);
 
   const canManage = perms.has('accounting.manage');
+  const nav = useNavigate();
   const canView = perms.has('accounting.view');
   const range: { preset: RangePreset; from?: string; to?: string } = { preset, ...(preset === 'custom' ? { from, to } : {}) };
 
@@ -51,6 +53,8 @@ export default function AccountingPage(): JSX.Element {
     );
   }
 
+  const canSeeReports = perms.has('financial.report.view');
+
   return (
     <div className="page">
       <PageHead
@@ -58,6 +62,11 @@ export default function AccountingPage(): JSX.Element {
         subtitle="Operating expenses and non-clinic income — separate from patient revenue"
         actions={
           <div className="row gap-sm">
+            {canSeeReports ? (
+              <button className="btn btn-secondary btn-sm" onClick={() => nav('/reports')}>
+                Reports
+              </button>
+            ) : null}
             <select className="select" value={preset} onChange={(e) => setPreset(e.target.value as RangePreset)} aria-label="Range">
               <option value="today">Today</option>
               <option value="last7">Last 7 days</option>

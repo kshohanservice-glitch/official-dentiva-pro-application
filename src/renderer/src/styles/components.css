@@ -1492,3 +1492,19 @@ input[type='radio'] {
 .chart-svg .bar { fill: var(--teal-500); rx: 4; }
 .chart-svg .bar.alt { fill: var(--teal-300); }
 .chart-svg .grid-line { stroke: var(--slate-200); stroke-dasharray: 3 4; }
+
+
+/* ------------------------------------------------------------------ */
+/* Accessibility: respect the OS reduced-motion preference             */
+/* ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

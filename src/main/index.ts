@@ -7,7 +7,7 @@ import { Logger } from './logging';
 import { SessionManager } from './session';
 import { IpcDispatcher } from './ipc/dispatcher';
 import { registerAllChannels, seedIfNeeded } from './ipc/register';
-import { openDatabase, type DB } from './db/database';
+import { integrityCheck, openDatabase, type DB } from './db/database';
 import { ensureActivated } from './security/activation';
 import { verifyPassword } from './security/passwords';
 import * as platform from './services/platform';
@@ -175,6 +175,12 @@ if (!gotLock) {
 
       db = openDatabase({ path: join(userDataDir, 'dentiva.db') });
       seedIfNeeded(db);
+      const integrity = integrityCheck(db);
+      if (integrity.ok) {
+        logger.info('startup_integrity_ok', {});
+      } else {
+        logger.error('startup_integrity_problems', { problems: integrity.problems.join('; ') });
+      }
 
       wireIpc();
       session.configure({

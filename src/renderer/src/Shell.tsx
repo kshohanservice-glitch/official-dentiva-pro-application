@@ -14,11 +14,9 @@ import {
   Package,
   BookOpen,
   UserCog,
-  UserPlus,
   Bell,
-  ShieldCheck,
   HardDrive,
-  Printer,
+  Info,
   Settings,
   LogOut,
   Lock,
@@ -36,41 +34,37 @@ interface NavGroup {
 
 const NAV: NavGroup[] = [
   {
-    label: 'Overview',
+    label: 'Practice',
     items: [
       { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={17} /> },
-      { to: '/notifications', label: 'Notifications', icon: <Bell size={17} /> },
+      { to: '/patients', label: 'Patients', icon: <Users size={17} /> },
+      { to: '/appointments', label: 'Appointments', icon: <CalendarDays size={17} /> },
       { to: '/queue', label: 'Queue', icon: <ListOrdered size={17} /> },
     ],
   },
   {
-    label: 'Clinic',
+    label: 'Clinical',
     items: [
-      { to: '/patients', label: 'Patients', icon: <Users size={17} /> },
-      { to: '/appointments', label: 'Appointments', icon: <CalendarDays size={17} /> },
+      { to: '/treatments', label: 'Treatments', icon: <Stethoscope size={17} /> },
       { to: '/prescriptions', label: 'Prescriptions', icon: <FileText size={17} /> },
-      { to: '/referrals', label: 'Referrals', icon: <UserPlus size={17} /> },
     ],
   },
   {
-    label: 'Finance',
+    label: 'Billing',
     items: [
-      { to: '/billing', label: 'Invoices', icon: <Receipt size={17} /> },
+      { to: '/billing', label: 'Invoice', icon: <Receipt size={17} /> },
       { to: '/payments', label: 'Payments', icon: <Wallet size={17} /> },
-      { to: '/treatments', label: 'Treatment Catalog', icon: <Stethoscope size={17} /> },
+      { to: '/inventory', label: 'Inventory', icon: <Package size={17} /> },
       { to: '/accounting', label: 'Accounting', icon: <BookOpen size={17} /> },
-      { to: '/reports', label: 'Reports', icon: <FileText size={17} /> },
     ],
   },
   {
-    label: 'Operations',
+    label: 'Administration',
     items: [
-      { to: '/inventory', label: 'Inventory', icon: <Package size={17} /> },
       { to: '/people', label: 'Staff & Users', icon: <UserCog size={17} /> },
-      { to: '/audit', label: 'Audit Log', icon: <ShieldCheck size={17} /> },
       { to: '/backup', label: 'Backup & Restore', icon: <HardDrive size={17} /> },
-      { to: '/printers', label: 'Printer Profiles', icon: <Printer size={17} /> },
       { to: '/settings', label: 'Settings', icon: <Settings size={17} /> },
+      { to: '/about', label: 'About', icon: <Info size={17} /> },
     ],
   },
 ];
@@ -200,13 +194,11 @@ export default function Shell(props: {
         <nav className="sidebar-nav" aria-label="Main navigation">
           {NAV.map((group) => {
             const items = group.items.filter((it) => {
-              if (it.to === '/people') return can('users.view');
-              if (it.to === '/audit') return can('audit.view');
-              if (it.to === '/backup') return can('backup.view');
+              if (it.to === '/people')
+                return can('staff.view') || can('user.manage') || can('role.manage');
+              if (it.to === '/backup') return can('backup.create') || can('backup.restore');
               if (it.to === '/accounting') return can('accounting.view');
-              if (it.to === '/reports') return can('reports.view');
-              if (it.to === '/printers') return can('printers.view');
-              if (it.to === '/treatments') return can('treatments.view');
+              if (it.to === '/treatments') return can('treatment.view');
               return true;
             });
             if (items.length === 0) return null;
@@ -223,9 +215,6 @@ export default function Shell(props: {
                   >
                     {it.icon}
                     <span>{it.label}</span>
-                    {it.to === '/notifications' && notifications > 0 ? (
-                      <span className="nav-badge">{notifications}</span>
-                    ) : null}
                   </NavLink>
                 ))}
               </div>
@@ -282,7 +271,7 @@ export default function Shell(props: {
             </button>
             <button
               className="btn btn-ghost btn-icon"
-              onClick={() => nav('/settings?tab=help')}
+              onClick={() => nav('/about')}
               aria-label="Help"
               title="Help"
             >

@@ -85,6 +85,8 @@ export const channelDefs = {
   /* --- system / session / activation / setup ---------------------- */
   'app.status': chan(zEmpty, null),
   'activation.verify': chan(z.object({ code: z.string().min(1).max(128) }), null),
+  'setup.pickLogo': chan(zEmpty, null),
+  'database.integrity': chan(zEmpty, ['settings.manage']),
   'setup.complete': chan(
     z.object({
       clinic: z.object({
@@ -127,6 +129,7 @@ export const channelDefs = {
       backupFolder: z.string().nullable().default(null),
       printerName: z.string().nullable().default(null),
       paperSize: z.enum(['A4', 'A5', 'A6', 'Letter', 'thermal58', 'thermal80']).default('A4'),
+      suggestedPrinters: z.boolean().default(true),
     }),
     null,
   ),
@@ -808,6 +811,15 @@ type ResponseMap = {
   'app.status': AppStatus;
   'activation.verify': { activated: boolean };
   'setup.complete': SessionState;
+  'setup.pickLogo': ClinicConfig;
+  'database.integrity': {
+    ok: boolean;
+    problems: string[];
+    sizeBytes: number;
+    walSizeBytes: number;
+    pageCount: number;
+    foreignKeyViolations: number;
+  };
   'session.state': SessionState;
   'session.login': SessionState;
   'session.unlock': SessionState;

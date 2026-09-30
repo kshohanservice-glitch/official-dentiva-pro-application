@@ -169,6 +169,11 @@ export default function PatientProfilePage(): JSX.Element {
                 <UserPlus size={16} /> Refer
               </button>
             ) : null}
+            {perms.has('referral.view') ? (
+              <button className="btn btn-ghost btn-sm" onClick={() => nav('/referrals')}>
+                All referrals
+              </button>
+            ) : null}
             {perms.has('patient.edit') ? (
               <button className="btn btn-ghost btn-icon" onClick={() => setEditOpen(true)} aria-label="Edit patient">
                 <Pencil size={16} />

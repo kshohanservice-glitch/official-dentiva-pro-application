@@ -1,12 +1,13 @@
 /** Settings: clinic profile, security, notifications, backup, data, about. */
 
 import { useCallback, useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Building2, Lock, Bell, HardDrive, Database, Info, Palette } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
+import type { Permission } from '@shared/permissions';
 import type { ClinicConfig, SessionState } from '@shared/types';
 import { Loading, Field, PageHead } from '../components/ui';
-import { toast } from '../lib/store';
+import { toast, useSession } from '../lib/store';
 
 type Tab = 'clinic' | 'security' | 'notifications' | 'backup' | 'data' | 'about';
 
@@ -479,13 +480,29 @@ function BackupTab(props: { canManage: boolean }): JSX.Element {
 
 function DataTab(): JSX.Element {
   const [busy, setBusy] = useState(false);
+  const nav = useNavigate();
+  const perms = useSession((st) => st.state?.user?.permissions ?? []);
+  const [dbInfo, setDbInfo] = useState<{
+    ok: boolean;
+    problems: string[];
+    sizeBytes: number;
+    walSizeBytes: number;
+    pageCount: number;
+    foreignKeyViolations: number;
+  } | null>(null);
 
-  const integrity = async (): Promise<void> => {
+  const runIntegrity = async (): Promise<void> => {
     setBusy(true);
     try {
-      // Re-run integrity via backup create? No — expose a quick check through patients export? Use settings channel? Simplest honest approach: run an audit of counts is not exposed; use print preview? None.
-      // The main process runs integrity checks on startup; here we surface that fact.
-      toast.success('Integrity is verified automatically at every startup; see About → diagnostics.');
+      const res = await api('database.integrity', {});
+      setDbInfo(res);
+      if (res.ok) {
+        toast.success('Integrity check passed — no problems found.');
+      } else {
+        toast.error(`Integrity check found problems: ${res.problems.join('; ')}`);
+      }
+    } catch (e) {
+      toast.error(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -503,25 +520,69 @@ function DataTab(): JSX.Element {
     }
   };
 
+  const fmtBytes = (n: number): string =>
+    n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+
+  const links: { label: string; to: string; perm: Permission }[] = [
+    { label: 'Printer profiles', to: '/printers', perm: 'printer.manage' },
+    { label: 'Audit log', to: '/audit', perm: 'audit.view' },
+    { label: 'Staff & Users', to: '/people', perm: 'staff.view' },
+  ];
+
   return (
-    <div className="card mt">
-      <div className="card-head"><h3>Data management</h3></div>
-      <div className="card-body stack">
-        <div className="alert info">
-          Dentiva Pro stores everything locally in a SQLite database (WAL mode, foreign keys
-          enforced) inside the app data folder. No data ever leaves this computer.
-        </div>
-        <div className="row gap">
-          <button className="btn btn-secondary" onClick={() => void exportPatients()} disabled={busy}>
-            <Database size={15} /> Export patients CSV
-          </button>
-          <button className="btn btn-secondary" onClick={() => void integrity()} disabled={busy}>
+    <div className="stack">
+      <div className="card">
+        <div className="card-head">
+          <h3>Database information</h3>
+          <button className="btn btn-secondary btn-sm" onClick={() => void runIntegrity()} disabled={busy}>
             Run integrity check
           </button>
         </div>
-        <p className="muted">
-          For full backups — including attachments — use the Backup &amp; Restore page.
-        </p>
+        <div className="card-body stack">
+          <div className="alert info">
+            Dentiva Pro stores everything locally in a SQLite database (WAL mode, foreign keys
+            enforced) inside the app data folder. No data ever leaves this computer. The integrity
+            check runs automatically at startup and before every backup.
+          </div>
+          {dbInfo ? (
+            <dl className="def-grid">
+              <dt>Integrity</dt>
+              <dd>{dbInfo.ok ? 'OK — no problems found' : `Problems: ${dbInfo.problems.join('; ')}`}</dd>
+              <dt>Foreign keys</dt>
+              <dd>{dbInfo.foreignKeyViolations === 0 ? 'All violations: 0' : `${dbInfo.foreignKeyViolations} violation(s)`}</dd>
+              <dt>Database size</dt>
+              <dd>{fmtBytes(dbInfo.sizeBytes)} · {dbInfo.pageCount} pages</dd>
+              <dt>WAL size</dt>
+              <dd>{fmtBytes(dbInfo.walSizeBytes)}</dd>
+            </dl>
+          ) : (
+            <p className="muted">Run the integrity check to see database health and size details.</p>
+          )}
+          <div className="row gap">
+            <button className="btn btn-secondary" onClick={() => void exportPatients()} disabled={busy}>
+              <Database size={15} /> Export patients CSV
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-head"><h3>Related centres</h3></div>
+        <div className="card-body stack">
+          <p className="muted">Specialised management screens live outside this settings hub:</p>
+          <div className="row gap" style={{ flexWrap: 'wrap' }}>
+            {links
+              .filter((l) => perms.includes(l.perm))
+              .map((l) => (
+                <button key={l.to} className="btn btn-secondary" onClick={() => nav(l.to)}>
+                  {l.label}
+                </button>
+              ))}
+          </div>
+          <p className="muted">
+            For full backups — including attachments — use the Backup &amp; Restore tab.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -531,7 +592,7 @@ function DataTab(): JSX.Element {
 /* About                                                               */
 /* ------------------------------------------------------------------ */
 
-function AboutTab(): JSX.Element {
+export function AboutTab(): JSX.Element {
   const [status, setStatus] = useState<{ appVersion: string; clinicName: string | null } | null>(null);
 
   useEffect(() => {

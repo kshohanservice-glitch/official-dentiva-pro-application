@@ -17,6 +17,7 @@ import Shell from './Shell';
 import DashboardPage from './pages/DashboardPage';
 import PatientsPage from './pages/PatientsPage';
 import PatientProfilePage from './pages/PatientProfilePage';
+import AboutPage from './pages/AboutPage';
 import DentalChartPage from './pages/DentalChartPage';
 import AppointmentsPage from './pages/AppointmentsPage';
 import QueuePage from './pages/QueuePage';
@@ -154,6 +155,7 @@ export default function App(): JSX.Element {
             <Route path="backup" element={<BackupPage />} />
             <Route path="printers" element={<PrintersPage />} />
             <Route path="settings" element={<SettingsPage session={session} />} />
+            <Route path="about" element={<AboutPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>

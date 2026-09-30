@@ -1,6 +1,6 @@
 /** First-run setup wizard: clinic info → dentists → admin → backup → printers. */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowLeft, ArrowRight, Check, Building2, Stethoscope, UserCog, HardDrive, Printer } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import { toast } from '../lib/store';
@@ -14,6 +14,44 @@ const STEPS = [
   { key: 'printers', label: 'Printer Profiles', icon: <Printer size={16} /> },
 ] as const;
 
+const DRAFT_KEY = 'dentiva.setup.draft.v1';
+
+interface SetupDraft {
+  step?: number;
+  clinicName?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  logoPath?: string | null;
+  dentists?: DentistDraft[];
+  displayName?: string;
+  username?: string;
+  lockMin?: number;
+  backupPath?: string;
+  autoBackup?: boolean;
+  autoSchedule?: '7d' | '15d' | '30d';
+  loadSuggested?: boolean;
+  paperSize?: 'A4' | 'A5' | 'A6' | 'Letter' | 'thermal58' | 'thermal80';
+}
+
+/** Resumable draft: everything EXCEPT passwords survives an app restart. */
+function readDraft(): SetupDraft {
+  try {
+    return JSON.parse(localStorage.getItem(DRAFT_KEY) ?? '{}') as SetupDraft;
+  } catch {
+    return {};
+  }
+}
+
+function clearDraft(): void {
+  try {
+    localStorage.removeItem(DRAFT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 interface DentistDraft {
   name: string;
   designations: string[];
@@ -23,36 +61,85 @@ interface DentistDraft {
 }
 
 export default function SetupWizard(props: { onComplete(): void }): JSX.Element {
-  const [step, setStep] = useState(0);
+  const [draft0] = useState<SetupDraft>(readDraft);
+  const [step, setStep] = useState(() => Math.min(draft0.step ?? 0, STEPS.length - 1));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Clinic
-  const [clinicName, setClinicName] = useState('');
-  const [address, setAddress] = useState('');
-  const [phone, setPhone] = useState('');
-  const [email, setEmail] = useState('');
-  const [website, setWebsite] = useState('');
+  const [clinicName, setClinicName] = useState(draft0.clinicName ?? '');
+  const [address, setAddress] = useState(draft0.address ?? '');
+  const [phone, setPhone] = useState(draft0.phone ?? '');
+  const [email, setEmail] = useState(draft0.email ?? '');
+  const [website, setWebsite] = useState(draft0.website ?? '');
+  const [logoPath, setLogoPath] = useState<string | null>(draft0.logoPath ?? null);
 
   // Dentists
-  const [dentists, setDentists] = useState<DentistDraft[]>([
-    { name: '', designations: [], qualifications: [], phone: '', email: '' },
-  ]);
+  const [dentists, setDentists] = useState<DentistDraft[]>(
+    draft0.dentists && draft0.dentists.length > 0
+      ? draft0.dentists
+      : [{ name: '', designations: [], qualifications: [], phone: '', email: '' }],
+  );
 
-  // Admin
-  const [displayName, setDisplayName] = useState('');
-  const [username, setUsername] = useState('');
+  // Admin (passwords are intentionally never persisted)
+  const [displayName, setDisplayName] = useState(draft0.displayName ?? '');
+  const [username, setUsername] = useState(draft0.username ?? '');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
-  const [lockMin, setLockMin] = useState<5 | 10 | 15 | 30>(15);
+  const [lockMin, setLockMin] = useState<5 | 10 | 15 | 30>(
+    draft0.lockMin === 5 || draft0.lockMin === 10 || draft0.lockMin === 30 ? draft0.lockMin : 15,
+  );
 
   // Backup
-  const [backupPath, setBackupPath] = useState('');
-  const [autoBackup, setAutoBackup] = useState(true);
-  const [autoSchedule, setAutoSchedule] = useState<'7d' | '15d' | '30d'>('7d');
+  const [backupPath, setBackupPath] = useState(draft0.backupPath ?? '');
+  const [autoBackup, setAutoBackup] = useState(draft0.autoBackup ?? true);
+  const [autoSchedule, setAutoSchedule] = useState<'7d' | '15d' | '30d'>(draft0.autoSchedule ?? '7d');
 
   // Printers
-  const [loadSuggested, setLoadSuggested] = useState(true);
+  const [loadSuggested, setLoadSuggested] = useState(draft0.loadSuggested ?? true);
+  const [paperSize, setPaperSize] = useState<'A4' | 'A5' | 'A6' | 'Letter' | 'thermal58' | 'thermal80'>(
+    draft0.paperSize ?? 'A4',
+  );
+
+  // Persist the resumable draft (never passwords) on every change.
+  useEffect(() => {
+    const draft: SetupDraft = {
+      step,
+      clinicName,
+      address,
+      phone,
+      email,
+      website,
+      logoPath,
+      dentists,
+      displayName,
+      username,
+      lockMin,
+      backupPath,
+      autoBackup,
+      autoSchedule,
+      loadSuggested,
+      paperSize,
+    };
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      /* ignore quota errors */
+    }
+  }, [
+    step, clinicName, address, phone, email, website, logoPath, dentists,
+    displayName, username, lockMin, backupPath, autoBackup, autoSchedule,
+    loadSuggested, paperSize,
+  ]);
+
+  const pickLogo = async (): Promise<void> => {
+    try {
+      const res = await api('setup.pickLogo', {});
+      setLogoPath(res.logoPath);
+    } catch (err) {
+      toast.error(errorMessage(err));
+    }
+  };
 
   const pickFolder = async (): Promise<void> => {
     try {
@@ -125,7 +212,7 @@ export default function SetupWizard(props: { onComplete(): void }): JSX.Element 
           website: website.trim(),
           registrationInfo: '',
           operatingHours: '',
-          logoPath: null,
+          logoPath,
           footerNote: '',
           prescriptionFooter: '',
           invoiceFooter: '',
@@ -148,8 +235,10 @@ export default function SetupWizard(props: { onComplete(): void }): JSX.Element 
         autoLockMinutes: lockMin,
         backupFolder: backupPath.trim() || null,
         printerName: null,
-        paperSize: 'A4' as const,
+        paperSize,
+        suggestedPrinters: loadSuggested,
       });
+      clearDraft();
       toast.success('Setup complete — welcome to Dentiva Pro!');
       props.onComplete();
     } catch (e) {
@@ -206,6 +295,16 @@ export default function SetupWizard(props: { onComplete(): void }): JSX.Element 
               </Field>
               <Field label="Website" full>
                 <input className="input" value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="https://…" />
+              </Field>
+              <Field label="Clinic logo" full>
+                <div className="row" style={{ gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => void pickLogo()}>
+                    Choose logo…
+                  </button>
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {logoPath ? `Current: ${logoPath}` : 'No logo chosen — you can add one later in Settings.'}
+                  </span>
+                </div>
               </Field>
             </div>
           </div>
@@ -342,8 +441,22 @@ export default function SetupWizard(props: { onComplete(): void }): JSX.Element 
             </div>
             <label className="check-row">
               <input type="checkbox" checked={loadSuggested} onChange={(e) => setLoadSuggested(e.target.checked)} />
-              <span>Create the three suggested printer profiles (A4, A5, thermal 80 mm)</span>
+              <span>Create the suggested printer profiles (A4, A5, thermal 80 mm)</span>
             </label>
+            <Field label="Default paper size">
+              <select
+                className="select"
+                value={paperSize}
+                onChange={(e) => setPaperSize(e.target.value as typeof paperSize)}
+              >
+                <option value="A4">A4 (documents)</option>
+                <option value="A5">A5 (prescriptions)</option>
+                <option value="A6">A6</option>
+                <option value="Letter">Letter</option>
+                <option value="thermal58">Thermal 58 mm</option>
+                <option value="thermal80">Thermal 80 mm</option>
+              </select>
+            </Field>
             <div className="alert info">
               PDF export uses the Windows print workflow: pick “Microsoft Print to PDF” and the
               app adapts the layout to that paper size automatically.
