@@ -512,6 +512,8 @@ export function registerAllChannels(deps: RegistrarDeps): void {
   dispatcher.register('reports.daily', (req, c) => accounting.dailyRevenue(sc(c), req as never));
   dispatcher.register('reports.methods', (req, c) => accounting.methodBreakdown(sc(c), req as never));
   dispatcher.register('reports.expenses', (req, c) => accounting.expensesByCategory(sc(c), req as never));
+  dispatcher.register('reports.purchases', (req, c) => accounting.purchaseCosts(sc(c), req as never));
+  dispatcher.register('reports.salaries', (req, c) => accounting.salariesExpense(sc(c), req as never));
   dispatcher.register('reports.treatmentRevenue', (req, c) =>
     accounting.treatmentRevenue(sc(c), req as never),
   );

@@ -19,6 +19,8 @@ export default function ReportsPage(): JSX.Element {
   const [methods, setMethods] = useState<MethodBreakdownRow[]>([]);
   const [expenses, setExpenses] = useState<CategorySpendRow[]>([]);
   const [treatments, setTreatments] = useState<CategorySpendRow[]>([]);
+  const [purchases, setPurchases] = useState<{ amountPoisha: number; txnCount: number } | null>(null);
+  const [salaries, setSalaries] = useState<{ amountPoisha: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,26 +40,34 @@ export default function ReportsPage(): JSX.Element {
       setSummary(s);
       setMethods(m);
       if (isCustom) {
-        const [d, e, t] = await Promise.all([
+        const [d, e, t, pc, sal] = await Promise.all([
           api('reports.daily', { from, to }),
           api('reports.expenses', { from, to }),
           api('reports.treatmentRevenue', { from, to }),
+          api('reports.purchases', { from, to }),
+          api('reports.salaries', { from, to }),
         ]);
         setDaily(d);
         setExpenses(e);
         setTreatments(t);
+        setPurchases(pc);
+        setSalaries(sal);
       } else {
         const span = presetSpan(preset);
         const f = new Date(Date.now() - span * 86_400_000).toISOString().slice(0, 10);
         const t2 = todayDhaka();
-        const [d, e, t] = await Promise.all([
+        const [d, e, t, pc, sal] = await Promise.all([
           api('reports.daily', { from: f, to: t2 }),
           api('reports.expenses', { from: f, to: t2 }),
           api('reports.treatmentRevenue', { from: f, to: t2 }),
+          api('reports.purchases', { from: f, to: t2 }),
+          api('reports.salaries', { from: f, to: t2 }),
         ]);
         setDaily(d);
         setExpenses(e);
         setTreatments(t);
+        setPurchases(pc);
+        setSalaries(sal);
       }
     } catch (e) {
       setError(errorMessage(e));
@@ -128,6 +138,14 @@ export default function ReportsPage(): JSX.Element {
             <div className={`stat-tile static ${summary.netPoisha < 0 ? 'negative' : ''}`}>
               <span className="stat-label">Net (collected + other − expenses)</span>
               <span className="stat-value"><Money poisha={summary.netPoisha} /></span>
+            </div>
+            <div className="stat-tile static">
+              <span className="stat-label">Purchase costs (stock)</span>
+              <span className="stat-value"><Money poisha={purchases?.amountPoisha ?? 0} /></span>
+            </div>
+            <div className="stat-tile static">
+              <span className="stat-label">Salaries (expenses)</span>
+              <span className="stat-value"><Money poisha={salaries?.amountPoisha ?? 0} /></span>
             </div>
           </div>
 

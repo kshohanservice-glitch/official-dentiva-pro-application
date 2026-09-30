@@ -617,6 +617,8 @@ export const channelDefs = {
     z.object({ from: zDate, to: zDate }),
     ['financial.report.view'],
   ),
+  'reports.purchases': chan(z.object({ from: zDate, to: zDate }), ['financial.report.view']),
+  'reports.salaries': chan(z.object({ from: zDate, to: zDate }), ['financial.report.view']),
   'reports.treatmentRevenue': chan(
     z.object({ from: zDate, to: zDate }),
     ['financial.report.view'],
@@ -911,6 +913,8 @@ type ResponseMap = {
   'accounting.otherIncomeSave': OtherIncomeRecord;
 
   'reports.range': ReportSummary;
+  'reports.purchases': { amountPoisha: number; txnCount: number };
+  'reports.salaries': { amountPoisha: number };
   'reports.daily': DailyRevenueRow[];
   'reports.methods': MethodBreakdownRow[];
   'reports.expenses': CategorySpendRow[];

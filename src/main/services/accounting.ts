@@ -396,6 +396,40 @@ export function expensesByCategory(
   return rows.map((r) => ({ category: r.category ?? 'Uncategorized', amountPoisha: r.total }));
 }
 
+export function purchaseCosts(
+  sc: ServiceContext,
+  p: { from: string; to: string },
+): { amountPoisha: number; txnCount: number } {
+  const start = dhakaDateToEpoch(p.from);
+  const end = dhakaDateToEpoch(p.to) + 86_400_000;
+  const row = sc.db
+    .prepare(
+      `SELECT COALESCE(SUM(quantity * COALESCE(unit_price_poisha, 0)), 0) AS total, COUNT(*) AS n
+       FROM inventory_transactions
+       WHERE type = 'purchase' AND created_at >= ? AND created_at < ?`,
+    )
+    .get(start, end) as { total: number; n: number };
+  return { amountPoisha: row.total, txnCount: row.n };
+}
+
+/** Salary-type expenses (builtin "Staff Salaries" plus custom categories containing "salar"). */
+export function salariesExpense(
+  sc: ServiceContext,
+  p: { from: string; to: string },
+): { amountPoisha: number } {
+  const start = dhakaDateToEpoch(p.from);
+  const end = dhakaDateToEpoch(p.to) + 86_400_000;
+  const row = sc.db
+    .prepare(
+      `SELECT COALESCE(SUM(e.amount_poisha), 0) AS total
+       FROM expenses e JOIN expense_categories c ON c.id = e.category_id
+       WHERE lower(c.name) LIKE '%salar%'
+         AND e.created_at >= ? AND e.created_at < ?`,
+    )
+    .get(start, end) as { total: number };
+  return { amountPoisha: row.total };
+}
+
 export function treatmentRevenue(
   sc: ServiceContext,
   p: { from: string; to: string },
