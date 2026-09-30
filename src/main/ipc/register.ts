@@ -60,8 +60,6 @@ export function registerAllChannels(deps: RegistrarDeps): void {
   dispatcher.register('app.status', () => {
     const db = deps.getDb();
     const userCount = (db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }).n;
-    const patientCount = (db.prepare('SELECT COUNT(*) AS n FROM patients').get() as { n: number }).n;
-    void patientCount;
     const dentistCount = (
       db.prepare('SELECT COUNT(*) AS n FROM dentists WHERE is_active = 1').get() as { n: number }
     ).n;
@@ -73,9 +71,7 @@ export function registerAllChannels(deps: RegistrarDeps): void {
       : !setupComplete
         ? 'setup'
         : deps.session.isAuthenticated()
-          ? deps.session.isLocked()
-            ? 'app'
-            : 'app'
+          ? 'app'
           : 'login';
     const status: AppStatus = {
       phase,
@@ -602,6 +598,13 @@ export function registerAllChannels(deps: RegistrarDeps): void {
   });
   dispatcher.register('backup.restore', async (req, c) => {
     const r = req as ChannelRequest<'backup.restore'>;
+    // Server-side double-confirm: the UI asks the operator to type the phrase,
+    // and the main process refuses without it even if a renderer is compromised.
+    if (r.confirmPhrase !== 'RESTORE') {
+      throw Object.assign(new Error('Confirmation phrase required to restore.'), {
+        code: 'VALIDATION' as const,
+      });
+    }
     const verify = backupSvc.verifyArchive(r.filePath);
     if (!verify.valid) {
       throw Object.assign(

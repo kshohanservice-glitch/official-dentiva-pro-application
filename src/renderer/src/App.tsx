@@ -78,14 +78,23 @@ export default function App(): JSX.Element {
     return off;
   }, [refresh, setStoreSession]);
 
-  // Periodic session heartbeat keeps auto-lock timer alive while active.
+  // Report REAL user input as session activity (throttled to 10s). An
+  // unconditional heartbeat would defeat auto-lock: an idle user must still
+  // be locked after the configured 5/10/15/30 minutes.
   useEffect(() => {
-    const id = setInterval(() => {
-      if (session?.authenticated && !session.locked) {
-        void api('session.activity', {}).catch(() => undefined);
-      }
-    }, 45_000);
-    return () => clearInterval(id);
+    if (!(session?.authenticated && !session.locked)) return;
+    let lastPing = 0;
+    const ping = (): void => {
+      const now = Date.now();
+      if (now - lastPing < 10_000) return;
+      lastPing = now;
+      void api('session.activity', {}).catch(() => undefined);
+    };
+    const events = ['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'] as const;
+    for (const e of events) window.addEventListener(e, ping, { passive: true });
+    return () => {
+      for (const e of events) window.removeEventListener(e, ping);
+    };
   }, [session?.authenticated, session?.locked]);
 
   if (booting) {

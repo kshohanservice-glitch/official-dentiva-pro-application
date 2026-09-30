@@ -120,10 +120,8 @@ type ListInvoices = {
 };
 
 export function listInvoices(sc: ServiceContext, p: ListInvoices): Paged<InvoiceRecord> {
-  const where: string[] = ["i.status != 'void' OR i.status = 'void'"];
+  const where: string[] = [];
   const args: unknown[] = [];
-  // status filter handled below (derived from payments)
-  where.length = 0;
   if (p.search.trim()) {
     where.push('(i.invoice_code LIKE ? OR p.full_name LIKE ? OR p.patient_code LIKE ?)');
     const like = `%${p.search.trim()}%`;
@@ -144,22 +142,33 @@ export function listInvoices(sc: ServiceContext, p: ListInvoices): Paged<Invoice
     where.push('i.created_at >= ? AND i.created_at < ?');
     args.push(range.start, range.end);
   }
-  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
-
-  const rows = sc.db
-    .prepare(`${INV_SELECT} ${whereSql} ORDER BY i.created_at DESC LIMIT 5000`)
-    .all(...args) as Record<string, unknown>[];
-  let invoices = rows.map((r) => mapInvoice(sc, r));
-  if (p.status !== 'all') {
-    invoices = invoices.filter((i) => i.status === p.status);
+  // Derived status (void / unpaid / partial / paid from non-voided payments) filtered in SQL
+  // so paging and totals are exact with no row caps.
+  const paidSum = `(SELECT COALESCE(SUM(pay.amount_poisha), 0) FROM payments pay
+                    WHERE pay.invoice_id = i.id AND pay.is_voided = 0)`;
+  if (p.status === 'unpaid') {
+    where.push(`i.status != 'void' AND (${paidSum}) <= 0`);
+  } else if (p.status === 'paid') {
+    where.push(`i.status != 'void' AND (${paidSum}) > 0 AND (${paidSum}) >= i.total_poisha`);
+  } else if (p.status === 'partial') {
+    where.push(`i.status != 'void' AND (${paidSum}) > 0 AND (${paidSum}) < i.total_poisha`);
   }
-  const total = invoices.length;
-  const start = (p.page - 1) * p.pageSize;
+  const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+  const joinSql = ' FROM invoices i JOIN patients p ON p.id = i.patient_id ';
+
+  const total = (
+    sc.db.prepare(`SELECT COUNT(*) AS n ${joinSql} ${whereSql}`).get(...args) as { n: number }
+  ).n;
+  const pageSize = Math.max(1, p.pageSize);
+  const offset = (Math.max(1, p.page) - 1) * pageSize;
+  const rows = sc.db
+    .prepare(`${INV_SELECT} ${whereSql} ORDER BY i.created_at DESC LIMIT ? OFFSET ?`)
+    .all(...args, pageSize, offset) as Record<string, unknown>[];
   return {
-    items: invoices.slice(start, start + p.pageSize),
+    items: rows.map((r) => mapInvoice(sc, r)),
     total,
     page: p.page,
-    pageSize: p.pageSize,
+    pageSize,
   };
 }
 

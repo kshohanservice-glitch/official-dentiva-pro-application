@@ -3,6 +3,7 @@
  * (Bengali-safe), hidden BrowserWindow print / printToPDF execution.
  */
 
+import { printFontFaceCss } from '../printFonts';
 import { BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
@@ -222,11 +223,20 @@ function shellHtml(title: string, bodyCss: string, body: string, opts: HtmlOptio
 <meta charset="utf-8" />
 <title>${esc(title)}</title>
 <style>
+${printFontFaceCss()}
 ${PAGE_CSS[paper] ?? PAGE_CSS.A4}
+/* Long-document flow: keep rows/sections whole, repeat table headers. */
+table { border-collapse: collapse; width: 100%; }
+thead { display: table-header-group; }
+tr { break-inside: avoid; page-break-inside: avoid; }
+.rx-section, .inv-section, .sig-block { break-inside: avoid; }
+.rx-section h3, .inv-section h3 { break-after: avoid; page-break-after: avoid; }
+h1, h2, h3 { break-after: avoid; }
+.img-block { break-inside: avoid; }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  font-family: 'Inter', 'Noto Sans Bengali', system-ui, sans-serif;
+  font-family: 'Dentiva Print Sans', 'Dentiva Print Bengali', system-ui, sans-serif;
   color: #0f172a;
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
@@ -374,7 +384,7 @@ function buildRxHtml(p: Extract<PrintPayload, { kind: 'prescription' }>, opts: H
   <div class="rx-section">
     <h3>Medications</h3>
     <table class="rx-meds">
-      <thead><tr><th class="num">#</th><th>Medicine &amp; signature</th><th>Qty</th><th>Route</th></tr></thead>
+      <thead><tr><th class="num">#</th><th>Medicine &amp; directions</th><th>Qty</th><th>Route</th></tr></thead>
       <tbody>${medRows || '<tr><td colspan="4">No medications</td></tr>'}</tbody>
     </table>
   </div>

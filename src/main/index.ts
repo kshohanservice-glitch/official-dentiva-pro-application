@@ -20,7 +20,9 @@ let db: DB;
 
 const logger = new Logger(app.getPath('userData'));
 const session = new SessionManager();
-const dispatcher = new IpcDispatcher(session, logger);
+const dispatcher = new IpcDispatcher(session, logger, () =>
+  ensureActivated(app.getPath('userData')).activated,
+);
 
 function serviceCtx(): ServiceContext {
   return {

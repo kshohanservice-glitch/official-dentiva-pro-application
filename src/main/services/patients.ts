@@ -255,7 +255,7 @@ export function patientTimeline(
       .prepare(
         `SELECT v.id, v.visit_code, v.visited_at, v.chief_complaint, v.diagnosis, d.full_name AS dentist
          FROM visits v JOIN dentists d ON d.id = v.dentist_id
-         WHERE v.patient_id = ? ORDER BY v.visited_at DESC LIMIT 500`,
+         WHERE v.patient_id = ?`,
       )
       .all(p.id) as { id: number; visit_code: string; visited_at: number; chief_complaint: string; diagnosis: string; dentist: string }[];
     for (const v of visits) {
@@ -276,7 +276,7 @@ export function patientTimeline(
         `SELECT r.id, r.prescription_code, r.issued_at, d.full_name AS dentist,
                 (SELECT COUNT(*) FROM prescription_items i WHERE i.prescription_id = r.id) AS n
          FROM prescriptions r JOIN dentists d ON d.id = r.dentist_id
-         WHERE r.patient_id = ? ORDER BY r.issued_at DESC LIMIT 500`,
+         WHERE r.patient_id = ?`,
       )
       .all(p.id) as { id: number; prescription_code: string; issued_at: number; dentist: string; n: number }[];
     for (const r of rx) {
@@ -295,7 +295,7 @@ export function patientTimeline(
     const appts = sc.db
       .prepare(
         `SELECT id, appointment_code, starts_at, status, reason FROM appointments
-         WHERE patient_id = ? ORDER BY starts_at DESC LIMIT 500`,
+         WHERE patient_id = ? `,
       )
       .all(p.id) as { id: number; appointment_code: string; starts_at: number; status: string; reason: string }[];
     for (const a of appts) {
@@ -314,7 +314,7 @@ export function patientTimeline(
     const invs = sc.db
       .prepare(
         `SELECT id, invoice_code, created_at, total_poisha, status FROM invoices
-         WHERE patient_id = ? ORDER BY created_at DESC LIMIT 500`,
+         WHERE patient_id = ? `,
       )
       .all(p.id) as { id: number; invoice_code: string; created_at: number; total_poisha: number; status: string }[];
     for (const i of invs) {
@@ -333,7 +333,7 @@ export function patientTimeline(
     const pays = sc.db
       .prepare(
         `SELECT id, payment_code, paid_at, amount_poisha, method FROM payments
-         WHERE patient_id = ? AND is_voided = 0 ORDER BY paid_at DESC LIMIT 500`,
+         WHERE patient_id = ? AND is_voided = 0 `,
       )
       .all(p.id) as { id: number; payment_code: string; paid_at: number; amount_poisha: number; method: string }[];
     for (const pay of pays) {
@@ -352,7 +352,7 @@ export function patientTimeline(
     const refs = sc.db
       .prepare(
         `SELECT id, referred_to, referred_on, status, reason FROM referrals
-         WHERE patient_id = ? ORDER BY referred_on DESC LIMIT 200`,
+         WHERE patient_id = ? `,
       )
       .all(p.id) as { id: number; referred_to: string; referred_on: string; status: string; reason: string }[];
     for (const r of refs) {
@@ -371,7 +371,7 @@ export function patientTimeline(
     const atts = sc.db
       .prepare(
         `SELECT id, file_name, created_at FROM attachments
-         WHERE patient_id = ? ORDER BY created_at DESC LIMIT 200`,
+         WHERE patient_id = ? `,
       )
       .all(p.id) as { id: number; file_name: string; created_at: number }[];
     for (const a of atts) {

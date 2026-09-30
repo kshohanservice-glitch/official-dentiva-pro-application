@@ -86,7 +86,7 @@ function mapRecord(r: Record<string, unknown>): BackupRecord {
 
 export function listBackups(sc: ServiceContext): BackupRecord[] {
   const rows = sc.db
-    .prepare('SELECT * FROM backup_records ORDER BY created_at DESC LIMIT 200')
+    .prepare('SELECT * FROM backup_records ORDER BY created_at DESC')
     .all() as Record<string, unknown>[];
   return rows.map(mapRecord);
 }

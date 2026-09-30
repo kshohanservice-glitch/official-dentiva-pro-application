@@ -23,8 +23,6 @@ type AnyHandler = (req: unknown, ctx: HandlerContext) => Promise<unknown> | unkn
 
 export class IpcDispatcher {
   private handlers = new Map<ChannelName, AnyHandler>();
-  private session: SessionManager;
-  private logger: Logger;
   /** Channels allowed before login (activation/setup/status only). */
   private preAuthChannels = new Set<ChannelName>([
     'app.status',
@@ -33,10 +31,36 @@ export class IpcDispatcher {
     'session.state',
     'session.login',
   ]);
+  /**
+   * Channels allowed while locked (in addition to pre-auth ones).
+   * `session.unlock` must run to verify the password and release the lock;
+   * `session.logout` must run so the lock screen's sign-out works.
+   * Every other channel stays blocked until unlock.
+   */
+  private lockExemptChannels = new Set<ChannelName>([
+    'session.unlock',
+    'session.logout',
+  ]);
+  /**
+   * Channels that work before the license is activated: reporting status,
+   * performing activation, and harmless state reads. Everything else —
+   * including setup and login — refuses with ACTIVATION_REQUIRED so
+   * activation is genuinely enforced by main-process logic, not just UI.
+   */
+  private preActivationChannels = new Set<ChannelName>([
+    'app.status',
+    'activation.verify',
+    'session.state',
+  ]);
 
-  constructor(session: SessionManager, logger: Logger) {
+  private session: SessionManager;
+  private logger: Logger;
+  private isActivated: () => boolean;
+
+  constructor(session: SessionManager, logger: Logger, isActivated: () => boolean = () => true) {
     this.session = session;
     this.logger = logger;
+    this.isActivated = isActivated;
   }
 
   register<C extends ChannelName>(channel: C, handler: ChannelHandler<C>): void {
@@ -61,21 +85,29 @@ export class IpcDispatcher {
     const handler = this.handlers.get(name);
     if (!handler) return fail('INTERNAL', 'Channel not implemented');
 
-    // 1. Schema validation — never trust renderer payloads.
+    // 1. License activation gate (setup, login and all data require activation).
+    if (!this.isActivated() && !this.preActivationChannels.has(name)) {
+      this.logger.warn('ipc.activation_required', { channel: name });
+      return fail('ACTIVATION_REQUIRED', 'Dentiva Pro is not activated.');
+    }
+
+    // 2. Schema validation — never trust renderer payloads.
     const parsed = def.request.safeParse(rawRequest ?? {});
     if (!parsed.success) {
       this.logger.warn('ipc.validation_failed', { channel: name });
       return fail('VALIDATION', 'Invalid request', parsed.error.issues.slice(0, 5));
     }
 
-    // 2. Session gate.
+    // 3. Session gate.
     const isPreAuth = this.preAuthChannels.has(name);
     if (!isPreAuth) {
       if (!this.session.isAuthenticated()) return fail('UNAUTHENTICATED', 'Please sign in.');
-      if (this.session.isLocked()) return fail('LOCKED', 'Session locked.');
+      if (this.session.isLocked() && !this.lockExemptChannels.has(name)) {
+        return fail('LOCKED', 'Session locked.');
+      }
     }
 
-    // 3. RBAC.
+    // 4. RBAC.
     if (def.permission && def.permission.length > 0) {
       if (!this.session.can(def.permission)) {
         const user = this.session.getUser();
@@ -90,7 +122,7 @@ export class IpcDispatcher {
       username: user?.username ?? 'system',
     };
 
-    // 4. Handler.
+    // 5. Handler.
     try {
       const data = await handler(parsed.data, ctx);
       this.logger.debug('ipc.ok', { channel: name, ms: Date.now() - started });

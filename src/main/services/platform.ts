@@ -968,28 +968,37 @@ export function dashboard(sc: ServiceContext): DashboardData {
       .get(dayStart, dayEnd) as { n: number }
   ).n;
 
-  const todayRevenuePoisha = (
-    sc.db
-      .prepare(
-        `SELECT COALESCE(SUM(amount_poisha), 0) AS total FROM payments
-         WHERE is_voided = 0 AND paid_at >= ? AND paid_at < ?`,
-      )
-      .get(dayStart, dayEnd) as { total: number }
-  ).total;
+  // Financial numbers are permission-gated: without payment/financial access
+  // the dashboard reports zeros and empty breakdowns (service-layer enforcement).
+  const perms = sc.session.getUser()?.permissions ?? [];
+  const canSeeMoney = perms.includes('payment.view') || perms.includes('financial.report.view');
 
-  const outstandingPoisha = (
-    sc.db
-      .prepare(
-        `SELECT COALESCE(SUM(i.total_poisha - COALESCE(p.paid, 0)), 0) AS total
-         FROM invoices i
-         LEFT JOIN (
-           SELECT invoice_id, SUM(amount_poisha) AS paid FROM payments
-           WHERE is_voided = 0 GROUP BY invoice_id
-         ) p ON p.invoice_id = i.id
-         WHERE i.status != 'void' AND (i.total_poisha - COALESCE(p.paid, 0)) > 0`,
-      )
-      .get() as { total: number }
-  ).total;
+  const todayRevenuePoisha = canSeeMoney
+    ? (
+        sc.db
+          .prepare(
+            `SELECT COALESCE(SUM(amount_poisha), 0) AS total FROM payments
+             WHERE is_voided = 0 AND paid_at >= ? AND paid_at < ?`,
+          )
+          .get(dayStart, dayEnd) as { total: number }
+      ).total
+    : 0;
+
+  const outstandingPoisha = canSeeMoney
+    ? (
+        sc.db
+          .prepare(
+            `SELECT COALESCE(SUM(i.total_poisha - COALESCE(p.paid, 0)), 0) AS total
+             FROM invoices i
+             LEFT JOIN (
+               SELECT invoice_id, SUM(amount_poisha) AS paid FROM payments
+               WHERE is_voided = 0 GROUP BY invoice_id
+             ) p ON p.invoice_id = i.id
+             WHERE i.status != 'void' AND (i.total_poisha - COALESCE(p.paid, 0)) > 0`,
+          )
+          .get() as { total: number }
+      ).total
+    : 0;
 
   const upcoming = sc.db
     .prepare(
@@ -1005,22 +1014,34 @@ export function dashboard(sc: ServiceContext): DashboardData {
   const recentPatients = sc.db
     .prepare(
       `SELECT p.*, (SELECT MAX(v.visited_at) FROM visits v WHERE v.patient_id = p.id) AS last_visit_at,
-              (SELECT COUNT(*) FROM visits v WHERE v.patient_id = p.id) AS visit_count, 0 AS due_poisha
+              (SELECT COUNT(*) FROM visits v WHERE v.patient_id = p.id) AS visit_count,
+              COALESCE((
+                SELECT SUM(i.total_poisha - COALESCE(pp.paid, 0))
+                FROM invoices i
+                LEFT JOIN (
+                  SELECT invoice_id, SUM(amount_poisha) AS paid FROM payments
+                  WHERE is_voided = 0 GROUP BY invoice_id
+                ) pp ON pp.invoice_id = i.id
+                WHERE i.patient_id = p.id AND i.status != 'void'
+                  AND (i.total_poisha - COALESCE(pp.paid, 0)) > 0
+              ), 0) AS due_poisha
        FROM patients p WHERE p.status = 'active' ORDER BY p.registered_at DESC LIMIT 8`,
     )
     .all() as Record<string, unknown>[];
 
-  const methodRows = sc.db
-    .prepare(
-      `SELECT method, SUM(amount_poisha) AS total, COUNT(*) AS n FROM payments
-       WHERE is_voided = 0 AND paid_at >= ? AND paid_at < ?
-       GROUP BY method`,
-    )
-    .all(dayStart - 29 * 86_400_000, dayEnd) as {
-    method: MethodBreakdownRow['method'];
-    total: number;
-    n: number;
-  }[];
+  const methodRows = canSeeMoney
+    ? (sc.db
+        .prepare(
+          `SELECT method, SUM(amount_poisha) AS total, COUNT(*) AS n FROM payments
+           WHERE is_voided = 0 AND paid_at >= ? AND paid_at < ?
+           GROUP BY method`,
+        )
+        .all(dayStart - 29 * 86_400_000, dayEnd) as {
+        method: MethodBreakdownRow['method'];
+        total: number;
+        n: number;
+      }[])
+    : [];
   const labels: Record<string, string> = {
     cash: 'Cash', bank: 'Bank Transfer', card: 'Card', bkash: 'bKash',
     nagad: 'Nagad', rocket: 'Rocket', upay: 'Upay', other: 'Others',
@@ -1032,17 +1053,19 @@ export function dashboard(sc: ServiceContext): DashboardData {
     count: r.n,
   }));
 
-  const trendRows = sc.db
-    .prepare(
-      `SELECT paid_at, SUM(amount_poisha) AS total, COUNT(*) AS n FROM payments
-       WHERE is_voided = 0 AND paid_at >= ? AND paid_at < ?
-       GROUP BY paid_at ORDER BY paid_at`,
-    )
-    .all(dayStart - 13 * 86_400_000, dayEnd) as {
-    paid_at: number;
-    total: number;
-    n: number;
-  }[];
+  const trendRows = canSeeMoney
+    ? (sc.db
+        .prepare(
+          `SELECT paid_at, SUM(amount_poisha) AS total, COUNT(*) AS n FROM payments
+           WHERE is_voided = 0 AND paid_at >= ? AND paid_at < ?
+           GROUP BY paid_at ORDER BY paid_at`,
+        )
+        .all(dayStart - 13 * 86_400_000, dayEnd) as {
+        paid_at: number;
+        total: number;
+        n: number;
+      }[])
+    : [];
   const trendMap = new Map<string, { amountPoisha: number; count: number }>();
   for (let d = 13; d >= 0; d--) {
     trendMap.set(epochToDhakaDate(dayStart - d * 86_400_000), { amountPoisha: 0, count: 0 });
@@ -1063,7 +1086,7 @@ export function dashboard(sc: ServiceContext): DashboardData {
 
   const lowStockItems = sc.db
     .prepare(
-      `SELECT *, (opening_stock + received_qty - used_qty) AS current_stock, 0 AS supplier_name
+      `SELECT *, (opening_stock + received_qty - used_qty) AS current_stock, NULL AS supplier_name
        FROM inventory_items
        WHERE is_active = 1 AND (opening_stock + received_qty - used_qty) <= reorder_level
        ORDER BY (opening_stock + received_qty - used_qty) ASC LIMIT 8`,

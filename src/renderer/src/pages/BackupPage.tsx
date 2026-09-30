@@ -198,7 +198,11 @@ export default function BackupPage(): JSX.Element {
           onClose={() => setRestoreOpen(false)}
           onRestored={() => {
             setRestoreOpen(false);
-            toast.success('Restore complete. The app will now restart.');
+            toast.success('Restore complete. Signing out to reload restored data…');
+            // Full reload re-initialises the session against the restored database.
+            void api('session.logout', {})
+              .catch(() => undefined)
+              .finally(() => window.location.reload());
           }}
         />
       ) : null}
