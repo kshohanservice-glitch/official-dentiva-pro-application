@@ -87,6 +87,8 @@ export default function Shell(props: {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<GlobalResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [activeResult, setActiveResult] = useState(-1);
   const [showLogout, setShowLogout] = useState(false);
   const [notifications, setNotifications] = useState(0);
   const [clinicName, setClinicName] = useState<string>('Dentiva Pro');
@@ -138,19 +140,53 @@ export default function Shell(props: {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Global search (debounced).
+  // Global search (debounced) with explicit loading/empty states.
   useEffect(() => {
     if (query.trim().length < 2) {
       setResults([]);
+      setSearching(false);
+      setActiveResult(-1);
       return;
     }
+    setSearching(true);
+    let stale = false;
     const t = setTimeout(() => {
       void api('search.global', { query: query.trim(), kinds: [] })
-        .then((r) => setResults(r))
-        .catch(() => setResults([]));
+        .then((r) => {
+          if (stale) return;
+          setResults(r);
+          setActiveResult(r.length > 0 ? 0 : -1);
+          setSearching(false);
+        })
+        .catch(() => {
+          if (stale) return;
+          setResults([]);
+          setActiveResult(-1);
+          setSearching(false);
+        });
     }, 250);
-    return () => clearTimeout(t);
+    return () => {
+      stale = true;
+      clearTimeout(t);
+    };
   }, [query]);
+
+  const onSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'ArrowDown' && results.length > 0) {
+      e.preventDefault();
+      setActiveResult((i) => (i + 1) % results.length);
+    } else if (e.key === 'ArrowUp' && results.length > 0) {
+      e.preventDefault();
+      setActiveResult((i) => (i - 1 + results.length) % results.length);
+    } else if (e.key === 'Enter' && activeResult >= 0 && results[activeResult]) {
+      e.preventDefault();
+      goResult(results[activeResult]!);
+    } else if (e.key === 'Escape') {
+      setQuery('');
+      setResults([]);
+      setActiveResult(-1);
+    }
+  };
 
   const toggleLock = (): void => {
     void api('session.lock', {})
@@ -179,7 +215,10 @@ export default function Shell(props: {
     else if (r.kind === 'treatment') nav('/treatments');
     else if (r.kind === 'staff') nav('/people');
     else nav('/');
-  };
+  setQuery('');
+  setResults([]);
+  setActiveResult(-1);
+};
 
   return (
     <div className="app-shell">
@@ -245,17 +284,35 @@ export default function Shell(props: {
             <SearchInput
               value={query}
               onChange={setQuery}
+              onKeyDown={onSearchKeyDown}
               placeholder="Search patients, invoices, appointments… (Ctrl+K)"
             />
-            {results.length > 0 ? (
+            {query.trim().length >= 2 ? (
               <div className="search-results" role="listbox">
-                {results.map((r) => (
-                  <button key={`${r.kind}:${r.id}`} className="search-result" onClick={() => goResult(r)}>
-                    <span className="kind">{r.kind}</span>
-                    <span className="primary">{r.title}</span>
-                    {r.subtitle ? <span className="secondary">{r.subtitle}</span> : null}
-                  </button>
-                ))}
+                {searching ? (
+                  <div className="search-result muted" role="option" aria-selected={false}>
+                    <span className="primary">Searching…</span>
+                  </div>
+                ) : results.length === 0 ? (
+                  <div className="search-result muted" role="option" aria-selected={false}>
+                    <span className="primary">No results for “{query.trim()}”</span>
+                  </div>
+                ) : (
+                  results.map((r, i) => (
+                    <button
+                      key={`${r.kind}:${r.id}`}
+                      className={`search-result${i === activeResult ? ' active' : ''}`}
+                      role="option"
+                      aria-selected={i === activeResult}
+                      onMouseEnter={() => setActiveResult(i)}
+                      onClick={() => goResult(r)}
+                    >
+                      <span className="kind">{r.kind}</span>
+                      <span className="primary">{r.title}</span>
+                      {r.subtitle ? <span className="secondary">{r.subtitle}</span> : null}
+                    </button>
+                  ))
+                )}
               </div>
             ) : null}
           </div>

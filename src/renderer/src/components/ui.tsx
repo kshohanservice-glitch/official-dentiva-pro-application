@@ -235,6 +235,7 @@ export function SearchInput(props: {
   value: string;
   onChange(v: string): void;
   placeholder?: string;
+  onKeyDown?(e: React.KeyboardEvent<HTMLInputElement>): void;
 }): JSX.Element {
   return (
     <div className="search-input">
@@ -245,6 +246,7 @@ export function SearchInput(props: {
         value={props.value}
         placeholder={props.placeholder ?? 'Search…'}
         onChange={(e) => props.onChange(e.target.value)}
+        onKeyDown={props.onKeyDown}
         aria-label={props.placeholder ?? 'Search'}
       />
     </div>
