@@ -13,7 +13,7 @@ concurrency:
   # PR events (refs/pull/N/merge) and push events for the same head branch
   # share one group, so a branch never runs two duplicate suites in parallel
   # (parallel electron-builder downloads were flaky).
-  group: ci-${{ github.head_ref || github.ref }}
+  group: ci-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
