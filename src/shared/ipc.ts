@@ -161,6 +161,9 @@ export const channelDefs = {
       footerNote: z.string().trim().max(300),
       prescriptionFooter: z.string().trim().max(300),
       invoiceFooter: z.string().trim().max(300),
+      // Programmatic logo import (mirrors staff photo import); absolute path
+      // to an image already on disk, or null to clear.
+      logoPath: z.string().trim().min(1).max(600).nullable().optional(),
     }),
     ['settings.manage'],
   ),
@@ -812,7 +815,7 @@ export type ChannelName = keyof typeof channelDefs;
 
 export type ChannelRequest<C extends ChannelName> = z.infer<(typeof channelDefs)[C]['request']>;
 
-type ResponseMap = {
+export type ResponseMap = {
   'app.status': AppStatus;
   'activation.verify': { activated: boolean };
   'setup.complete': SessionState;

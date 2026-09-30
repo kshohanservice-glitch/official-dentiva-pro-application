@@ -72,9 +72,9 @@ jobs:
           retention-days: 30
 
   e2e:
-    name: Windows · Electron e2e boot
+    name: Windows · Electron e2e (boot + workflows)
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -102,5 +102,16 @@ jobs:
       - name: Rebuild native modules for Electron
         run: npm run rebuild:electron
 
-      - name: Electron e2e (boot + activation gate via real IPC)
+      - name: Electron e2e (boot, auth, clinical, finance, RBAC, backup, print, idle-lock)
         run: npm run test:e2e
+
+      - name: Upload e2e screenshots, PDFs and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            artifacts/e2e/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14

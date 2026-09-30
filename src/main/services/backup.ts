@@ -367,13 +367,8 @@ export async function restoreBackup(
       restoredAttachments++;
     }
 
-    audit(sc, {
-      action: 'backup.restore',
-      entityType: 'backup',
-      entityId: basename(p.filePath),
-      summary: `Restored backup (${patientCount} patients, ${restoredAttachments} attachments)`,
-    });
-
+    // Note: no audit write here — the live connection is closed at this
+    // point. The calling handler audits after it reopens the restored DB.
     return {
       preRestorePath: preRecord.filePath,
       patients: patientCount,
@@ -390,40 +385,51 @@ export async function restoreBackup(
 
 /** File-level copy of the live DB taken while it is closed. */
 async function preRestoreCopy(sc: ServiceContext, dbPath: string): Promise<BackupRecord> {
-  const folder = backupFolderFromSettings(sc);
-  mkdirSync(folder, { recursive: true });
-  const now = sc.now();
-  const d = new Date(now);
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  const filePath = join(folder, `dentiva-backup-${stamp}-pre_restore.zip`);
-  await new Promise<void>((resolve, reject) => {
-    const output = createWriteStream(filePath);
-    const archive = archiver('zip', { zlib: { level: 6 } });
-    output.on('close', () => resolve());
-    archive.on('error', (err) => reject(err));
-    archive.pipe(output);
-    if (existsSync(dbPath)) archive.file(dbPath, { name: 'dentiva.db' });
-    const attDir = join(sc.userDataDir, 'attachments');
-    if (existsSync(attDir)) {
-      archive.directory(attDir, 'attachments');
-    }
-    void archive.finalize();
-  });
-  const record = insertRecord(sc, {
-    path: filePath,
-    size: statSync(filePath).size,
-    kind: 'pre_restore',
-    status: 'success',
-    error: '',
-  });
-  audit(sc, {
-    action: 'backup.pre_restore',
-    entityType: 'backup',
-    entityId: String(record.id),
-    summary: 'Created pre-restore safety backup',
-  });
-  return record;
+  // The caller has already closed the live connection — everything here runs
+  // against a short-lived private connection on the same file (exclusive
+  // access is guaranteed while the main handle is closed).
+  const { default: BetterSqlite3 } = await import('better-sqlite3');
+  const conn = existsSync(dbPath) ? new BetterSqlite3(dbPath) : null;
+  if (!conn) ipcError('INTERNAL', 'Live database is missing; cannot create a pre-restore backup.');
+  const localSc: ServiceContext = { ...sc, db: conn };
+  try {
+    const folder = backupFolderFromSettings(localSc);
+    mkdirSync(folder, { recursive: true });
+    const now = sc.now();
+    const d = new Date(now);
+    const pad = (n: number): string => String(n).padStart(2, '0');
+    const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+    const filePath = join(folder, `dentiva-backup-${stamp}-pre_restore.zip`);
+    await new Promise<void>((resolve, reject) => {
+      const output = createWriteStream(filePath);
+      const archive = archiver('zip', { zlib: { level: 6 } });
+      output.on('close', () => resolve());
+      archive.on('error', (err) => reject(err));
+      archive.pipe(output);
+      archive.file(dbPath, { name: 'dentiva.db' });
+      const attDir = join(sc.userDataDir, 'attachments');
+      if (existsSync(attDir)) {
+        archive.directory(attDir, 'attachments');
+      }
+      void archive.finalize();
+    });
+    const record = insertRecord(localSc, {
+      path: filePath,
+      size: statSync(filePath).size,
+      kind: 'pre_restore',
+      status: 'success',
+      error: '',
+    });
+    audit(localSc, {
+      action: 'backup.pre_restore',
+      entityType: 'backup',
+      entityId: String(record.id),
+      summary: 'Created pre-restore safety backup',
+    });
+    return record;
+  } finally {
+    conn.close();
+  }
 }
 
 export function autoBackupDue(sc: ServiceContext): boolean {

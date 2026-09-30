@@ -233,7 +233,11 @@ if (!gotLock) {
       const allowed = url.startsWith('file://') || (devUrl !== undefined && url.startsWith(devUrl));
       if (!allowed) event.preventDefault();
     });
-    contents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    // Preview windows are opened as about:blank shells that the renderer
+    // fills with MAIN-generated, escaped print HTML (CSP style-src allows the
+    // inline styles; the preview document carries no scripts). Everything
+    // else — external URLs, injected anchors — stays denied.
+    contents.setWindowOpenHandler(({ url }) => (url === 'about:blank' ? { action: 'allow' } : { action: 'deny' }));
   });
 }
 

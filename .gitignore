@@ -57,3 +57,6 @@ Thumbs.db
 # Generated icon intermediates (final assets are committed under build/)
 .tmp/
 .cache/
+
+# E2E artifacts (screenshots, PDFs — human review copies)
+artifacts/

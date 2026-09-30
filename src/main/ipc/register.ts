@@ -342,9 +342,13 @@ export function registerAllChannels(deps: RegistrarDeps): void {
   /* ---------------- clinic & settings ---------------- */
 
   dispatcher.register('clinic.get', (_req, c) => platform.getClinicConfig(sc(c)));
-  dispatcher.register('clinic.update', (req, c) =>
-    platform.updateClinicConfig(sc(c), req as ChannelRequest<'clinic.update'>),
-  );
+  dispatcher.register('clinic.update', (req, c) => {
+    const r = req as ChannelRequest<'clinic.update'>;
+    const svcCtx = sc(c);
+    let config = platform.updateClinicConfig(svcCtx, r);
+    if (r.logoPath !== undefined) config = platform.setClinicLogo(svcCtx, r.logoPath);
+    return config;
+  });
   dispatcher.register('setup.pickLogo', async (_req, c) => {
     const svcCtx = sc(c);
     const users = (svcCtx.db.prepare('SELECT COUNT(*) AS n FROM users').get() as { n: number }).n;
@@ -663,6 +667,8 @@ export function registerAllChannels(deps: RegistrarDeps): void {
     // Close live DB, restore, reopen.
     deps.getDb().close();
     let preRestorePath = '';
+    let restoredPatients = 0;
+    let restoredAttachments = 0;
     try {
       const outcome = await backupSvc.restoreBackup(sc(c), {
         filePath: r.filePath,
@@ -670,6 +676,8 @@ export function registerAllChannels(deps: RegistrarDeps): void {
         attachmentsDir: `${deps.userDataDir}/attachments`,
       });
       preRestorePath = outcome.preRestorePath;
+      restoredPatients = outcome.patients;
+      restoredAttachments = outcome.attachments;
     } catch (err) {
       try {
         deps.setDb(openDatabase({ path: deps.dbPath }));
@@ -683,7 +691,7 @@ export function registerAllChannels(deps: RegistrarDeps): void {
       action: 'backup.restore',
       entityType: 'backup',
       entityId: r.filePath,
-      summary: 'Database restored from backup',
+      summary: `Database restored from backup (${restoredPatients} patients, ${restoredAttachments} attachments)`,
     });
     return { restored: true as const, preRestorePath };
   });

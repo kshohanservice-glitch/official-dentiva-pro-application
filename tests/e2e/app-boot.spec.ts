@@ -11,8 +11,11 @@
  *   3. `app.status` reports unactivated,
  *   4. data channels are refused with ACTIVATION_REQUIRED (gate before schema).
  *
- * No activation material is present in this file — deeper flows require the
- * manual Windows checklist (see docs/QA.md).
+ * No activation material is present in this file — this suite deliberately
+ * stays on the UNACTIVATED gate; activated workflow suites live alongside it
+ * (setup-auth, clinical-ops, finance, rbac-inventory, backup-restore,
+ * print-validate, session-lock) and write activation through the app's own
+ * writeActivationState() with no secret in the repo (see helpers.ts).
  */
 
 import {
