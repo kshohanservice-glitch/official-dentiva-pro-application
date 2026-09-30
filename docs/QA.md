@@ -1,0 +1,143 @@
+# Dentiva Pro — Pre-release QA & Requirement Traceability
+
+This document records the full audit cycle (source, UX, functional, DB, permission,
+security, printer, backup, install/uninstall, restart, stress, regression) and the
+second independent-style requirement-to-implementation review against
+`docs/SPECIFICATION.md`. Findings below were fixed before this document was written;
+test evidence is reproduced by the regression command.
+
+## 1. Regression command & evidence
+
+```
+npm run typecheck && npx eslint . && npx vitest run && npx electron-vite build
+```
+
+Latest local run: **67/67 tests passed**, eslint 0 problems, both tsconfigs clean,
+`electron-vite build` exit 0. Tests cover security hygiene (no plaintext activation
+material anywhere in source/tests/docs/scripts), database migrations/integrity/
+seed idempotency, money maths (integer poisha), dispatcher gate order (activation →
+schema → session/lock → RBAC), and renderer boot/render smoke.
+
+## 2. Audit findings fixed (Phases 16–17)
+
+### Security & gates
+1. **Lock screen dead-end (critical)** — `session.unlock`/`session.logout` were blocked
+   by the lock gate. Added a lock-exempt set (still session-authenticated; never
+   pre-auth). Covered by dispatcher tests.
+2. **Pre-activation IPC (critical)** — main only *warned* pre-activation, and
+   `setup.complete` was guarded solely by `userCount > 0`. Dispatcher now fails
+   `ACTIVATION_REQUIRED` before schema validation for every channel except
+   `app.status`, `activation.verify`, `session.state`.
+3. **Dashboard financial exposure** — revenue/outstanding/method breakdown/trend are
+   now gated on `payment.view` or `financial.report.view`; patient due balances come
+   from a real invoice-minus-payments subquery (was a hardcoded zero).
+4. **Backup restore double-confirm** — the renderer's `RESTORE` phrase was never
+   checked by main; it is now enforced server-side. Restore ends with logout +
+   reload, matching what the UI promises.
+5. **Auto-lock defeated by design (critical)** — an unconditional 45-second activity
+   heartbeat refreshed `lastActivityAt` even when the user was idle, so the
+   5/10/15/30-minute auto-lock could never fire. Replaced with throttled real input
+   events (pointer/keyboard/wheel/touch).
+6. **Phantom permission codes** — the sidebar and pages checked non-existent
+   permissions (`users.view`, `backup.view`, `treatments.view`, `reports.view`,
+   `printers.view`), which silently hid navigation from *everyone* without `*`.
+   All checks now use canonical codes (`staff.view`/`user.manage`,
+   `backup.create`/`backup.restore`, `treatment.view`, `financial.report.view`,
+   `printer.manage`).
+7. **Setup logo channel** — wizard logo picking uses a setup-only channel guarded in
+   the handler (`FORBIDDEN` once any user exists) and blocked pre-activation.
+
+### Honesty / dead UI removed
+8. **Fake integrity check** — the Settings data tab's "Run integrity check" only
+   showed a canned toast. Now a real `database.integrity` channel runs
+   `PRAGMA integrity_check` + `PRAGMA foreign_key_check` and reports file/WAL sizes;
+   startup also logs an integrity result.
+9. **Printer checkbox did nothing** — the wizard's suggested-profiles checkbox now
+   actually creates the profiles via `setup.complete`, and printer profiles are no
+   longer re-seeded from `seed.ts` (deleting a profile survives restart; regression
+   test added).
+10. **Orphan routes** — Referrals/Reports/Audit/Printer Profiles lost sidebar slots to
+    the spec's exact IA and gained real entry points (patient profile, Accounting,
+    Settings related centres).
+11. **No in-app updater, no network calls** — source scan confirms zero runtime
+    `fetch`/XHR/HTTP usage; fonts and assets are bundled locally.
+
+### Spec gaps closed
+12. Exact sidebar IA (Practice · Clinical · Billing · Administration) + About page.
+13. Staff photos (managed folder, path guard, preview, cleanup on replace).
+14. Prescription templates ("Use as template") + medication reorder.
+15. Setup wizard resumability (localStorage draft, passwords never persisted).
+16. Header business date (Asia/Dhaka); reduced-motion support; top-level error
+    boundary; styled + keyboard-navigable global search with loading/empty states.
+17. Reports complete the spec list: daily revenue, method breakdown, income vs
+    expense, receivables, expense categories, treatment revenue, **purchase costs**,
+    **salaries**, all with date ranges.
+18. No artificial record caps: invoice paging is SQL `COUNT` + `LIMIT/OFFSET` (was a
+    5,000-row cap with in-memory paging), patient-timeline and backup-history caps
+    removed.
+
+### Printer fidelity
+19. Preview/PDF popups only inherit the renderer CSP, so bundled `@fontsource` CSS
+    was unreachable and `'Inter'`/`'Noto Sans Bengali'` were dead family names —
+    Bengali glyphs would fall back per system. Fixed by embedding the woff2 subsets
+    as base64 `@font-face` inside generated print HTML
+    (`src/main/printFonts.ts`, regenerate with
+    `scripts/generate-print-fonts.mjs`).
+20. Long-document print CSS: table header repetition, row/section page-break
+    avoidance, signature block kept whole.
+
+## 3. Requirement traceability (spec §2)
+
+| # | Module | Status | Evidence |
+| --- | --- | --- | --- |
+| 1 | Activation | Enforced | `dispatcher` activation gate tests; salted derived-hash verifier; `activation.json` in userData survives restart |
+| 2 | Setup wizard | Complete | 5 steps incl. logo, multi-designation dentists, admin (no defaults), auto-lock, backup folder, printer profiles + paper preference; resumable draft |
+| 3 | Auth | Complete | Argon2id, main-side session, manual/auto lock (lock-exempt unlock/logout tests) |
+| 4 | RBAC | Complete | Permission checked per channel after session gate; financial permissions separate |
+| 5 | Shell | Complete | Exact IA groups; header brand/clinic/date/search/notification bell/profile/lock/logout; Ctrl+K |
+| 6 | Dashboard | Complete | All KPIs computed in SQL; money fields permission-gated |
+| 7 | Patients | Complete | SQL-paged unlimited list, unique codes, filterable timeline without caps |
+| 8 | Dental chart | Complete | 52-tooth FDI build test, condition painting incl. custom conditions, button-based keyboard access, persistence |
+| 9 | Visits | Complete | Structured visit capture in profile |
+| 10 | Clinical options | Complete | Seeded C/C · O/E · R/E option sets + custom notes |
+| 11 | Treatments | Complete | Catalog with price history; invoice items store price snapshots |
+| 12 | Appointments | Complete | Day/week views; conflict detection; status transitions; check-in enqueues queue |
+| 13 | Queue | Complete | Positions, waited minutes, start/complete/skip/recall, walk-ins |
+| 14 | Prescriptions | Complete | Multi-medication with reorder, templates, common-medicine chips, signature space, Bengali-safe print |
+| 15 | Invoices | Complete | Snapshot items, statuses, void flow, print without signature block |
+| 16 | Payments | Complete | Default-today filters, BD methods, partial payments as rows, void |
+| 17 | Inventory | Complete | Movements incl. purchase costs, expiry, low stock, suppliers |
+| 18 | Accounting | Complete | Income/expense distinct from revenue; full report list incl. salaries & purchases |
+| 19 | Staff & Users | Complete | Staff incl. photo + salary, optional staff-linked accounts, roles UI |
+| 20 | Notifications | Complete | 60s poll + manual refresh, unread badge, category filters |
+| 21 | Global search | Complete | Permission-respecting kinds, loading/empty states, arrow/Enter/Escape keyboard nav |
+| 22 | Attachments | Complete | Managed folder with path guard, open-in-viewer, missing-file error, included in backups |
+| 23 | Referrals | Complete | Create/list/update, surfaced in timeline, profile entry point |
+| 24 | Audit log | Complete | INSERT-only service; no UPDATE/DELETE paths exist |
+| 25 | Backup/restore | Complete | SHA-256 manifest (DB + attachments), pre-restore copy, server-side confirm phrase, 0/7/15/30-day schedules |
+| 26 | Printer profiles | Complete | Per-doc profiles, margins/orientation/scale/copies, unavailable-printer handling |
+| 27 | Settings | Complete | Clinic (incl. document footers), security, notifications, backup, data (DB info + integrity), about; specialised centres linked |
+| 28 | About | Complete | Product, version, `Shohan Khan` / `helloiamshohan@gmail.com` only |
+| 29 | Data integrity | Complete | Transactions, idempotency-key UNIQUE columns, integer poisha, FK enforcement, startup integrity log |
+| 30 | States & a11y | Complete | Loading/empty/error/denied patterns, error boundary, Escape-to-close modals, Ctrl+K, reduced motion |
+
+## 4. Honest limitations (not verifiable in this environment)
+
+- **Windows CI first run** — `.github/workflows/{ci,release}.yml` have not executed
+  yet on `windows-latest`; treat green local checks as necessary but not sufficient.
+- **Installer** — NSIS packaging requires the Windows runner (no wine here). No local
+  `.exe` was built; `validate-dist.mjs` failing on a missing `dist/` locally is
+  expected. Install/uninstall/upgrade on a clean machine is untested.
+- **Physical printing** — no printer hardware here: paper-feed, margins on real
+  stock, and "Microsoft Print to PDF" flow are untested. HTML/CSS print output and
+  embedded Bengali fonts are verified by construction (base64 woff2) and build tests,
+  not by a physical printout.
+- **E2E** — Playwright browsers are not installed in this environment; renderer
+  coverage comes from jsdom boot/render tests, not full end-to-end journeys.
+- **Performance/stress** — exercised via SQL paging and integer maths review and
+  synthetic unit tests; no multi-year, million-row database was used.
+- **Single machine** — multi-user concurrency beyond SQLite WAL + transaction design
+  review is untested.
+
+Do not claim production readiness until CI has run on Windows, the installer has
+been exercised on a clean machine, and a physical print test has been performed.
