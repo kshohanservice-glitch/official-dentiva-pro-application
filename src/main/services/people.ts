@@ -3,6 +3,8 @@
 import type { ServiceContext } from './context';
 import { audit, requireUser } from './context';
 import { ipcError } from '../ipc/dispatcher';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
+import { basename, extname, join } from 'node:path';
 import { hashPassword, checkPasswordStrength, verifyPassword, lockoutDurationFor } from '../security/passwords';
 import type { Permission, BuiltInRoleKey } from '@shared/permissions';
 import type { DentistRecord, RoleSummary, StaffRecord, UserSummary } from '@shared/types';
@@ -49,6 +51,7 @@ export type StaffSave = {
   address: string;
   phone: string;
   idNumber: string;
+  photoPath: string | null;
   section: string;
   salaryPoisha: number;
   joiningDate: string | null;
@@ -56,34 +59,84 @@ export type StaffSave = {
   notes: string;
 };
 
+function staffPhotoDir(sc: ServiceContext): string {
+  return join(sc.userDataDir, 'staff');
+}
+
+/** Copy a user-chosen photo into managed storage and return its safe path + preview. */
+export function importStaffPhoto(
+  sc: ServiceContext,
+  sourcePath: string,
+): { photoPath: string; dataUrl: string } {
+  const dir = staffPhotoDir(sc);
+  mkdirSync(dir, { recursive: true });
+  const ext = ['.png', '.jpg', '.jpeg', '.webp'].includes(extname(sourcePath).toLowerCase())
+    ? extname(sourcePath).toLowerCase()
+    : '.png';
+  const safe = basename(sourcePath).replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80).replace(/\.[^.]*$/, '');
+  const target = join(dir, `${Date.now()}-${safe}${ext}`);
+  copyFileSync(sourcePath, target);
+  const buf = readFileSync(target);
+  const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
+  return { photoPath: target, dataUrl: `data:${mime};base64,${buf.toString('base64')}` };
+}
+
+/** Data URL preview of a staff member's photo (managed-path guard enforced). */
+export function staffPhotoDataUrl(sc: ServiceContext, id: number): string | null {
+  const row = sc.db.prepare('SELECT photo_path FROM staff WHERE id = ?').get(id) as
+    | { photo_path: string | null }
+    | undefined;
+  const path = row?.photo_path;
+  if (!path || !path.startsWith(staffPhotoDir(sc)) || !existsSync(path)) return null;
+  const ext = extname(path).toLowerCase();
+  const mime = ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.webp' ? 'image/webp' : 'image/png';
+  return `data:${mime};base64,${readFileSync(path).toString('base64')}`;
+}
+
 export function saveStaff(sc: ServiceContext, p: StaffSave): StaffRecord {
   const now = sc.now();
+  const dir = staffPhotoDir(sc);
+  const photoPath = p.photoPath ?? null;
+  if (photoPath && !photoPath.startsWith(dir)) {
+    ipcError('VALIDATION', 'Photo must live in the managed staff photo folder.');
+  }
   const id = sc.db.transaction(() => {
     if (p.id) {
-      const exists = sc.db.prepare('SELECT id FROM staff WHERE id = ?').get(p.id);
+      const exists = sc.db.prepare('SELECT photo_path FROM staff WHERE id = ?').get(p.id) as
+        | { photo_path: string | null }
+        | undefined;
       if (!exists) ipcError('NOT_FOUND', 'Staff member not found.');
       sc.db
         .prepare(
           `UPDATE staff SET full_name=?, dob=?, gender=?, blood_group=?, address=?, phone=?,
-                  id_number=?, section=?, salary_poisha=?, joining_date=?, status=?, notes=?,
+                  id_number=?, photo_path=?, section=?, salary_poisha=?, joining_date=?, status=?, notes=?,
                   updated_at=? WHERE id=?`,
         )
         .run(
           p.fullName, p.dob, p.gender, p.bloodGroup, p.address, p.phone,
-          p.idNumber, p.section, p.salaryPoisha, p.joiningDate, p.status, p.notes,
+          p.idNumber, photoPath, p.section, p.salaryPoisha, p.joiningDate, p.status, p.notes,
           now, p.id,
         );
+      // Best-effort cleanup of a replaced/removed photo file.
+      const old = exists.photo_path;
+      if (old && old !== photoPath && old.startsWith(dir) && existsSync(old)) {
+        try {
+          unlinkSync(old);
+        } catch {
+          /* ignore */
+        }
+      }
       return p.id;
     }
     const info = sc.db
       .prepare(
         `INSERT INTO staff (full_name, dob, gender, blood_group, address, phone, id_number,
-                            section, salary_poisha, joining_date, status, notes, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+                            photo_path, section, salary_poisha, joining_date, status, notes, created_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
       .run(
         p.fullName, p.dob, p.gender, p.bloodGroup, p.address, p.phone,
-        p.idNumber, p.section, p.salaryPoisha, p.joiningDate, p.status, p.notes,
+        p.idNumber, photoPath, p.section, p.salaryPoisha, p.joiningDate, p.status, p.notes,
         now, now,
       );
     return Number(info.lastInsertRowid);

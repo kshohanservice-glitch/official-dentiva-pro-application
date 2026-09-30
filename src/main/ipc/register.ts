@@ -522,6 +522,21 @@ export function registerAllChannels(deps: RegistrarDeps): void {
     people.listStaff(sc(c), (req as ChannelRequest<'staff.list'>).includeInactive),
   );
   dispatcher.register('staff.save', (req, c) => people.saveStaff(sc(c), req as never));
+  dispatcher.register('staff.pickPhoto', async (_req, c) => {
+    const svcCtx = sc(c);
+    const win = deps.getWindow();
+    if (!win) return { photoPath: null, dataUrl: null };
+    const res = await dialog.showOpenDialog(win, {
+      title: 'Choose staff photo',
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    });
+    if (res.canceled || !res.filePaths[0]) return { photoPath: null, dataUrl: null };
+    return people.importStaffPhoto(svcCtx, res.filePaths[0]);
+  });
+  dispatcher.register('staff.photo', (req, c) => ({
+    dataUrl: people.staffPhotoDataUrl(sc(c), (req as ChannelRequest<'staff.photo'>).id),
+  }));
   dispatcher.register('dentists.list', (req, c) =>
     people.listDentists(sc(c), (req as ChannelRequest<'dentists.list'>).includeInactive),
   );

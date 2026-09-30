@@ -259,6 +259,19 @@ export default function Shell(props: {
               </div>
             ) : null}
           </div>
+          <div
+            className="header-date nowrap muted"
+            aria-label="Today (Asia/Dhaka)"
+            title="Business dates use the Asia/Dhaka time zone"
+          >
+            {new Date().toLocaleDateString('en-GB', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+              timeZone: 'Asia/Dhaka',
+            })}
+          </div>
           <div className="header-actions">
             <button
               className="btn btn-ghost btn-icon"

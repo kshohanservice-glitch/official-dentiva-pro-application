@@ -634,6 +634,7 @@ export const channelDefs = {
       address: z.string().trim().max(400).default(''),
       phone: z.string().trim().max(32).default(''),
       idNumber: z.string().trim().max(60).default(''),
+      photoPath: z.string().trim().max(600).nullable().default(null),
       section: z.string().trim().max(80).default(''),
       salaryPoisha: zMoney.min(0).default(0),
       joiningDate: zDate.nullable().default(null),
@@ -642,6 +643,8 @@ export const channelDefs = {
     }),
     ['staff.manage'],
   ),
+  'staff.pickPhoto': chan(zEmpty, ['staff.manage']),
+  'staff.photo': chan(z.object({ id: z.number().int().positive() }), ['staff.view']),
   'dentists.list': chan(z.object({ includeInactive: z.boolean().default(false) }), ['staff.view']),
   'dentists.save': chan(
     z.object({
@@ -915,6 +918,8 @@ type ResponseMap = {
 
   'staff.list': StaffRecord[];
   'staff.save': StaffRecord;
+  'staff.pickPhoto': { photoPath: string | null; dataUrl: string | null };
+  'staff.photo': { dataUrl: string | null };
   'dentists.list': DentistRecord[];
   'dentists.save': DentistRecord;
   'users.list': UserSummary[];

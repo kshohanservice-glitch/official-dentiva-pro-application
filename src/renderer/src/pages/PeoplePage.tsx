@@ -134,7 +134,23 @@ function StaffTab(props: { canManage: boolean }): JSX.Element {
                     <td>{statusBadge(s.status)}</td>
                     <td>
                       {props.canManage ? (
-                        <button className="btn btn-ghost btn-sm" onClick={() => setDraft(toStaffDraft(s))}>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          onClick={() => {
+                            setDraft(toStaffDraft(s));
+                            if (s.photoPath) {
+                              void api('staff.photo', { id: s.id })
+                                .then((r) =>
+                                  setDraft((cur) =>
+                                    cur && cur.id === s.id
+                                      ? { ...cur, photoDataUrl: r.dataUrl }
+                                      : cur,
+                                  ),
+                                )
+                                .catch(() => undefined);
+                            }
+                          }}
+                        >
                           <Pencil size={14} />
                         </button>
                       ) : null}
@@ -172,6 +188,8 @@ interface StaffDraft {
   address: string;
   phone: string;
   idNumber: string;
+  photoPath: string | null;
+  photoDataUrl: string | null;
   section: string;
   salary: string;
   joiningDate: string;
@@ -182,14 +200,16 @@ interface StaffDraft {
 function blankStaff(): StaffDraft {
   return {
     id: null, fullName: '', dob: '', gender: null, bloodGroup: '', address: '', phone: '',
-    idNumber: '', section: '', salary: '', joiningDate: '', status: 'active', notes: '',
+    idNumber: '', photoPath: null, photoDataUrl: null, section: '', salary: '', joiningDate: '',
+    status: 'active', notes: '',
   };
 }
 
 function toStaffDraft(s: StaffRecord): StaffDraft {
   return {
     id: s.id, fullName: s.fullName, dob: s.dob ?? '', gender: s.gender, bloodGroup: s.bloodGroup ?? '',
-    address: s.address, phone: s.phone, idNumber: s.idNumber, section: s.section,
+    address: s.address, phone: s.phone, idNumber: s.idNumber, photoPath: s.photoPath,
+    photoDataUrl: null, section: s.section,
     salary: (s.salaryPoisha / 100).toFixed(2), joiningDate: s.joiningDate ?? '', status: s.status, notes: s.notes,
   };
 }
@@ -206,6 +226,7 @@ async function saveStaff(draft: StaffDraft): Promise<void> {
     address: draft.address,
     phone: draft.phone,
     idNumber: draft.idNumber,
+    photoPath: draft.photoPath,
     section: draft.section,
     salaryPoisha: salary,
     joiningDate: draft.joiningDate || null,
@@ -223,6 +244,15 @@ function StaffModal(props: {
   const d = props.draft;
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const pickPhoto = async (): Promise<void> => {
+    try {
+      const res = await api('staff.pickPhoto', {});
+      if (res.photoPath) props.onChange({ ...d, photoPath: res.photoPath, photoDataUrl: res.dataUrl });
+    } catch (e) {
+      setErr(errorMessage(e));
+    }
+  };
 
   const save = async (): Promise<void> => {
     if (!d.fullName.trim()) {
@@ -286,6 +316,32 @@ function StaffModal(props: {
           </Field>
           <Field label="National ID">
             <input className="input" value={d.idNumber} onChange={(e) => props.onChange({ ...d, idNumber: e.target.value })} />
+          </Field>
+          <Field label="Photo" full>
+            <div className="row gap" style={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              {d.photoDataUrl ? (
+                <img
+                  src={d.photoDataUrl}
+                  alt=""
+                  style={{ width: 44, height: 44, borderRadius: 22, objectFit: 'cover', border: '1px solid var(--border)' }}
+                />
+              ) : null}
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void pickPhoto()}>
+                {d.photoPath ? 'Change photo…' : 'Choose photo…'}
+              </button>
+              {d.photoPath ? (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  onClick={() => props.onChange({ ...d, photoPath: null, photoDataUrl: null })}
+                >
+                  Remove
+                </button>
+              ) : null}
+              <span className="muted" style={{ fontSize: 12 }}>
+                {d.photoPath ? 'Stored in the managed staff photo folder.' : 'No photo on file.'}
+              </span>
+            </div>
           </Field>
           <Field label="Salary (৳/month)">
             <input className="input" inputMode="decimal" value={d.salary} onChange={(e) => props.onChange({ ...d, salary: e.target.value })} />

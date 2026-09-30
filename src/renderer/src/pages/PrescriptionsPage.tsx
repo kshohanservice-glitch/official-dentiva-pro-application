@@ -1,7 +1,7 @@
 /** Prescriptions: builder with structured C/C · O/E · R/E, print & PDF. */
 
 import { useCallback, useEffect, useState } from 'react';
-import { Plus, Trash2, Printer, FileDown, FileText } from 'lucide-react';
+import { Plus, Trash2, Printer, FileDown, FileText, ArrowUp, ArrowDown } from 'lucide-react';
 import { api, errorMessage } from '../lib/api';
 import type { DentistRecord, MedicationLine, MedicineCatalogItem, PrescriptionRecord } from '@shared/types';
 import {
@@ -44,6 +44,7 @@ export default function PrescriptionsPage(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [template, setTemplate] = useState<PrescriptionRecord | null>(null);
   const [detail, setDetail] = useState<PrescriptionRecord | null>(null);
   const [canCreate, setCanCreate] = useState(false);
   const [canPrint, setCanPrint] = useState(false);
@@ -163,6 +164,18 @@ export default function PrescriptionsPage(): JSX.Element {
                       <td>{rx.items.length}</td>
                       <td className="nowrap">
                         <button className="btn btn-ghost btn-sm" onClick={() => setDetail(rx)}>View</button>
+                        {canCreate ? (
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            title="Create a new prescription prefilled from this one"
+                            onClick={() => {
+                              setTemplate(rx);
+                              setCreateOpen(true);
+                            }}
+                          >
+                            Use as template
+                          </button>
+                        ) : null}
                         {canPrint ? (
                           <>
                             <button className="btn btn-ghost btn-sm" onClick={() => void printPreview(rx.id)} title="Preview">
@@ -191,7 +204,11 @@ export default function PrescriptionsPage(): JSX.Element {
 
       {createOpen ? (
         <CreatePrescriptionModal
-          onClose={() => setCreateOpen(false)}
+          template={template}
+          onClose={() => {
+            setCreateOpen(false);
+            setTemplate(null);
+          }}
           onSaved={(rx) => {
             setCreateOpen(false);
             setPage(1);
@@ -221,23 +238,29 @@ export default function PrescriptionsPage(): JSX.Element {
 function CreatePrescriptionModal(props: {
   onClose(): void;
   onSaved(rx: PrescriptionRecord): void;
+  template?: PrescriptionRecord | null;
 }): JSX.Element {
-  const [step, setStep] = useState<'patient' | 'doctor' | 'details' | 'meds'>('patient');
+  const tpl = props.template ?? null;
+  const [step, setStep] = useState<'patient' | 'doctor' | 'details' | 'meds'>(tpl ? 'details' : 'patient');
   const [patients, setPatients] = useState<{ id: number; fullName: string; patientCode: string; phone: string }[]>([]);
   const [query, setQuery] = useState('');
-  const [patientId, setPatientId] = useState<number | null>(null);
-  const [patientLabel, setPatientLabel] = useState('');
+  const [patientId, setPatientId] = useState<number | null>(tpl?.patientId ?? null);
+  const [patientLabel, setPatientLabel] = useState(
+    tpl ? `${tpl.patientName} (${tpl.patientCode})` : '',
+  );
   const [dentists, setDentists] = useState<DentistRecord[]>([]);
-  const [dentistId, setDentistId] = useState(0);
-  const [chief, setChief] = useState('');
-  const [oe, setOe] = useState('');
-  const [re, setRe] = useState('');
-  const [advice, setAdvice] = useState('');
-  const [notes, setNotes] = useState('');
+  const [dentistId, setDentistId] = useState(tpl?.dentistId ?? 0);
+  const [chief, setChief] = useState(tpl?.chiefComplaint ?? '');
+  const [oe, setOe] = useState(tpl?.onExamination ?? '');
+  const [re, setRe] = useState(tpl?.restExamination ?? '');
+  const [advice, setAdvice] = useState(tpl?.advice ?? '');
+  const [notes, setNotes] = useState(tpl?.notes ?? '');
   const [ccOptions, setCcOptions] = useState<{ id: number; label: string }[]>([]);
   const [oeOptions, setOeOptions] = useState<{ id: number; label: string }[]>([]);
   const [reOptions, setReOptions] = useState<{ id: number; label: string }[]>([]);
-  const [meds, setMeds] = useState<MedicationLine[]>([blankMed()]);
+  const [meds, setMeds] = useState<MedicationLine[]>(
+    tpl && tpl.items.length > 0 ? tpl.items.map((m) => ({ ...m })) : [blankMed()],
+  );
   const [catalog, setCatalog] = useState<MedicineCatalogItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -246,13 +269,13 @@ function CreatePrescriptionModal(props: {
     void api('dentists.list', { includeInactive: false })
       .then((list) => {
         setDentists(list);
-        if (list[0]) setDentistId(list[0].id);
+        if (!tpl?.dentistId && list[0]) setDentistId(list[0].id);
       })
       .catch(() => undefined);
     void api('clinical.options', { section: 'cc' }).then(setCcOptions).catch(() => undefined);
     void api('clinical.options', { section: 'oe' }).then(setOeOptions).catch(() => undefined);
     void api('clinical.options', { section: 're' }).then(setReOptions).catch(() => undefined);
-  }, []);
+  }, [tpl?.dentistId]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -276,6 +299,18 @@ function CreatePrescriptionModal(props: {
 
   const setMed = (i: number, patch: Partial<MedicationLine>): void => {
     setMeds((list) => list.map((m, idx) => (idx === i ? { ...m, ...patch } : m)));
+  };
+
+  const moveMed = (i: number, dir: -1 | 1): void => {
+    setMeds((list) => {
+      const j = i + dir;
+      if (j < 0 || j >= list.length) return list;
+      const next = [...list];
+      const tmp = next[i]!;
+      next[i] = next[j]!;
+      next[j] = tmp;
+      return next;
+    });
   };
 
   const submit = async (): Promise<void> => {
@@ -339,7 +374,7 @@ function CreatePrescriptionModal(props: {
 
   return (
     <Modal
-      title="New prescription"
+      title={tpl ? 'New prescription from template' : 'New prescription'}
       onClose={props.onClose}
       size="xl"
       footer={
@@ -509,11 +544,31 @@ function CreatePrescriptionModal(props: {
               <div className="med-row card card-pad" key={i}>
                 <div className="row between mb-sm">
                   <strong>Medicine {i + 1}</strong>
-                  {meds.length > 1 ? (
-                    <button className="btn btn-ghost btn-sm" onClick={() => setMeds(meds.filter((_, idx) => idx !== i))}>
-                      <Trash2 size={14} />
+                  <div className="row gap-sm">
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      disabled={i === 0}
+                      onClick={() => moveMed(i, -1)}
+                      aria-label="Move medicine up"
+                      title="Move up"
+                    >
+                      <ArrowUp size={14} />
                     </button>
-                  ) : null}
+                    <button
+                      className="btn btn-ghost btn-sm"
+                      disabled={i === meds.length - 1}
+                      onClick={() => moveMed(i, 1)}
+                      aria-label="Move medicine down"
+                      title="Move down"
+                    >
+                      <ArrowDown size={14} />
+                    </button>
+                    {meds.length > 1 ? (
+                      <button className="btn btn-ghost btn-sm" onClick={() => setMeds(meds.filter((_, idx) => idx !== i))} aria-label="Remove medicine">
+                        <Trash2 size={14} />
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="grid cols-3">
                   <Field label="Medicine" required>
