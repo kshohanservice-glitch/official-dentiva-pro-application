@@ -21,7 +21,7 @@ the exact next action.
 | 10. Renderer: design system + shell + auth/setup flows | DONE | tokens.css + components.css (incl. search dropdown + reduced motion); activation → setup → login → lock gate flow; wizard resumable (no passwords persisted). |
 | 11. Renderer: all feature modules + states + shortcuts | DONE | 24 pages incl. standalone About; exact spec IA; staff photos; Rx templates + reorder; error boundary; global search loading/empty + keyboard nav. |
 | 12. Icon generation script + verification | DONE | `scripts/generate-icons.mjs` (ImageMagick) + committed `resources/icon.ico` (256px multi-res). |
-| 13. Tests: unit + integration + component + e2e | DONE | **67/67 unit/integration green** (security, database, money, dispatcher gates, renderer boot) + **e2e boot suite green on Windows CI** (`tests/e2e/app-boot.spec.ts`: real IPC activation gate). |
+| 13. Tests: unit + integration + component + e2e | DONE | **67/67 unit/integration green** + e2e boot suite green on Windows CI; workflow suites (`tests/e2e/`: setup+resume, login/lock + real 5-min idle auto-lock, patients/visits/chart, appointments+queue, invoice+payments, RBAC+inventory, backup/restore, print/PDF) with isolated temp profiles and SQLite assertions after every close. Run 36793829011 on `bc16e15`: package job green, **e2e job failed** (31 min of execution; logs/artifacts unreachable from the sandbox). Root causes found by source review and **fixed** (duplicate "New invoice"/"Register patient" strict-mode locators; payment Amount taka→poisha 200 vs 2000; Dhaka-midnight queue-date booking; preview popup gate accepting `window.open('')`); CI now converts Playwright JSON results into check-run annotations for future diagnosis. Awaiting a new run's observed result. |
 | 14. Docs: README, THIRD_PARTY_LICENSES, QA traceability | DONE | License audit 100% permissive; `docs/QA.md` = audit findings + 30-module traceability + honest limitations. |
 | 15. CI workflows (PR gates, windows packaging, release) | DONE | `.github/workflows/ci.yml` (windows-latest gate + artifact) and `release.yml` (tag → installer → checksums → GH Release, fallback `release-artifacts` branch). |
 | 16. Full audit cycle (source/UX/functional/DB/permission/security/print/backup) | DONE | Findings recorded in `docs/QA.md` §2; all fixed and regression-tested. |
@@ -30,22 +30,37 @@ the exact next action.
 
 ## Verification log (latest full gate)
 
-- `npm run typecheck` → exit 0 (node + web)
+- `npm run typecheck` → exit 0 (node + web + e2e tsconfigs) — re-run after the
+  e2e root-cause fixes (finance/clinical specs, window-open gate, annotation step)
 - `npx eslint .` → 0 errors, 0 warnings
 - `npx vitest run` → **67/67 tests pass** (5 files)
-- `npx electron-vite build` → exit 0; Bengali/Inter print fonts embedded as base64 in `src/main/printFonts.ts`
-- `node scripts/validate-dist.mjs` → structural checks OK; full pass requires `dist/` from a Windows build
+- `npm run build` → exit 0 (electron-vite; Bengali/Inter woff2 emitted)
+- `npx playwright test --list` → 20 tests in 8 files parse cleanly
+- `node scripts/e2e-annotations.mjs` smoke-tested against a mock report
+- Windows CI run **36793829011** (`bc16e15`): package job **success (observed)**;
+  e2e job 110152590913 **failure (observed)** — `Electron e2e` step
+  00:00:51Z→00:32:09Z (31 min, full suite ran), only annotation "exit code 1",
+  logs + artifacts unreachable (endpoint EOFs). Fixes committed with docs; a
+  NEW run must be watched to completion (BOTH jobs) and recorded in QA §4.
 
 ## Known issues / failed tests
 
+- **Run 36793829011 e2e job FAILED (observed)**: per-test results unavailable
+  (log/artifact endpoints unreachable from the sandbox). Diagnosis by source
+  review found and fixed 5 issues (see QA §4): duplicate accessible-name
+  locators ("New invoice", "Register patient"), payment Amount unit bug
+  (200 taka vs asserted 200,000 poisha), Phone-field filter matching
+  "Emergency phone", Dhaka-midnight queue-date booking, preview popup gate
+  rejecting `window.open('')`. Next run's per-test failures (if any) will
+  surface as check-run annotations via `scripts/e2e-annotations.mjs`.
 - **Playwright e2e not run here**: no display server, no browsers, no Wine in this
-  sandbox, so Electron cannot be launched locally. CI (`windows-latest`) runs unit +
-  integration tests; the e2e suite must be exercised on a real Windows machine before
-  calling the release "verified end-to-end".
+  sandbox, so Electron cannot be launched locally — suites run on `windows-latest`.
 - **Installer not built locally**: NSIS packaging requires Windows/Wine.
-  `release.yml`/`ci.yml` build and validate it; confirm the first CI run.
-- **Hardware printer untested**: no physical printer available — print/PDF output
-  verified via embedded fonts + preview HTML only.
+  `release.yml`/`ci.yml` build and validate it; confirmed green in run 36785200107.
+- **Hardware printer untested**: no physical printer available — preview HTML,
+  embedded fonts, PDF bytes/geometry are CI-checked; paper output needs a human.
+- **Native dialogs (backup folder, logo, attachments)**: not automatable headlessly;
+  manual acceptance item (QA §6).
 - **Print font regeneration**: after any `@fontsource` upgrade run
   `node scripts/generate-print-fonts.mjs` (output is committed).
 
@@ -55,18 +70,33 @@ the exact next action.
    run 36785200107 on `7ed3bcd` green end-to-end (typecheck, lint, 67/67 tests,
    build, NSIS package, validate-dist); artifact `dentiva-pro-windows-installer`
    (≈111 MB with SHA256SUMS.txt, 30-day retention).
-2. Manual Windows verification checklist: activation → setup (incl. resume) → login →
-   auto-lock (verify it locks while idle) → backup → restore → install → uninstall →
-   restart. *(Needs a person on Windows.)*
-3. ~~E2E on real Windows~~ — **boot/security-gate e2e green in CI** (run
-   36786940957, job "Windows · Electron e2e boot"); full-journey automation is not
-   written — the manual checklist covers it. **Physical print still open**: A4
-   Bengali prescription + 80 mm thermal receipt.
+2. **Workflow e2e confirmation**: run 36793829011 (`bc16e15`) — package job
+   green, **e2e job failed (observed; logs/artifacts unreachable)**. Root-cause
+   fixes are committed; a **new run must be watched to completion with BOTH
+   jobs green** before any readiness claim, and its run ID/SHA/jobs recorded in
+   QA §4. Suites cover: setup+resume, login/lock/real-time idle auto-lock,
+   patients/visits/adult+pediatric chart persistence, appointment conflict +
+   queue lifecycle, invoice/partial+full/overpay/idempotency/void, RBAC
+   (FORBIDDEN + money masking), inventory math/alerts, backup manifest+SHA-256,
+   restore with pre-restore proof, Bengali print previews + A4/thermal PDF
+   geometry.
+3. Human-only acceptance (QA §6 — do not mark passed without a person): clean-Windows
+   install → first launch → activation → setup → restart → persistence → uninstall;
+   native picker dialogs; **physical prints** (A4 Bengali Rx incl. long text, multiple
+   qualifications/medicines, clinical sections, logo, signature space; invoice; 80 mm
+   thermal) with clipping/overlap/page-break/glyph/logo/scaling judgement; high-DPI.
 4. Exercise `release.yml` on the `v1.0.0` tag (first tagged release) and confirm the
-   GitHub Release publish (or `release-artifacts` branch fallback).
+   GitHub Release publish (or `release-artifacts` branch fallback) — blocked until the
+   user tags after acceptance.
 
 ## Next action
 
-PR #1 is green on CI and **ready for review** (never merge from the agent). Remaining
-work needs a human on a Windows machine: manual checklist + physical prints; then tag
-`v1.0.0` to exercise the release workflow.
+Commit the docs re-sync + e2e root-cause fixes + annotation step → push to
+`arena/01a0f39e-official-dentiva-pro-applicati` → watch the NEW Windows CI run
+to completion (**both** jobs) → record the observed result (run ID, SHA, jobs,
+annotations) in QA §4 → if the e2e job fails again, read the new annotations and
+fix root causes without weakening tests → when automatable work is green, post
+the reviewer-facing PR #1 comment (ready for review; verified vs human-remaining)
+and stop at the human acceptance gate (QA §6). PR #1 is NOT merged (user merges
+manually). Do NOT tag `v1.0.0`, publish a release, or claim production
+readiness.
