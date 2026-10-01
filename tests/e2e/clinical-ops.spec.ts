@@ -5,6 +5,7 @@
  * the full queue lifecycle — verified in SQLite after each app close.
  */
 import { test, expect } from '@playwright/test'
+import { epochToDhakaDate } from '../../src/shared/datetime'
 import {
   ADMIN_PASSWORD,
   DENTIST_ARGS,
@@ -41,13 +42,14 @@ test.describe('clinical operations', () => {
     await completeSetup(page, { username: 'ops-admin' })
 
     await page.getByRole('link', { name: 'Patients' }).click()
-    await expect(page.getByRole('button', { name: 'Register patient' })).toBeVisible()
-    await page.getByRole('button', { name: 'Register patient' }).click()
+    // PageHead + empty-state both render a "Register patient" button → pick the first.
+    await expect(page.getByRole('button', { name: 'Register patient' }).first()).toBeVisible()
+    await page.getByRole('button', { name: 'Register patient' }).first().click()
 
     const modal = page.locator('.modal-overlay')
     await expect(modal).toBeVisible()
     await field(modal, 'Full name').fill('Rahim Uddin Test')
-    await field(modal, 'Phone').fill('01712345501')
+    await field(modal, /^Phone/).fill('01712345501')
     await field(modal, 'Presenting problem').fill('Tooth pain lower right')
     await modal.getByRole('button', { name: 'Register patient' }).click()
 
@@ -180,7 +182,13 @@ test.describe('clinical operations', () => {
     const patientId = await seedPatient(ctx, 'Queue Flow Patient', '01712345503')
     const dentist = await dentistId(ctx)
 
-    const start = Math.ceil(Date.now() / 900_000) * 900_000 + 3600_000 // next quarter hour + 1h
+    const now = Date.now()
+    let start = Math.ceil(now / 900_000) * 900_000 + 3_600_000 // next quarter hour + 1h
+    // checkIn files the queue entry under the appointment's Dhaka date while
+    // QueuePage lists TODAY's Dhaka date — keep the slot on the same Dhaka day
+    // as "now" so the UI lifecycle is deterministic on a UTC runner (the app's
+    // overlap check is epoch-based, so a conflicting slot still collides).
+    if (epochToDhakaDate(start) !== epochToDhakaDate(now)) start = now
     const appt = await api(
       page,
       'appointments.create',

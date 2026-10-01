@@ -237,7 +237,11 @@ if (!gotLock) {
     // fills with MAIN-generated, escaped print HTML (CSP style-src allows the
     // inline styles; the preview document carries no scripts). Everything
     // else — external URLs, injected anchors — stays denied.
-    contents.setWindowOpenHandler(({ url }) => (url === 'about:blank' ? { action: 'allow' } : { action: 'deny' }));
+    contents.setWindowOpenHandler(({ url }) =>
+      // Preview popups open an empty window ('' or 'about:blank') and then
+      // document.write the server-rendered print HTML — allow exactly that.
+      url === 'about:blank' || url === '' ? { action: 'allow' } : { action: 'deny' },
+    );
   });
 }
 

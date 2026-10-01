@@ -105,6 +105,12 @@ jobs:
       - name: Electron e2e (boot, auth, clinical, finance, RBAC, backup, print, idle-lock)
         run: npm run test:e2e
 
+      # Job logs/artifacts may be unreachable from some environments — turn
+      # Playwright's JSON report into check-run annotations (readable via API).
+      - name: Annotate e2e failures
+        if: always()
+        run: node scripts/e2e-annotations.mjs
+
       - name: Upload e2e screenshots, PDFs and traces
         if: always()
         uses: actions/upload-artifact@v4

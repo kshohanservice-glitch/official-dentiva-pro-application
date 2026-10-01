@@ -59,7 +59,8 @@ test.describe('billing & finance', () => {
     await api(page, 'patients.create', newPatient('Invoice UI Patient', '01712345505'))
 
     await page.getByRole('link', { name: 'Invoice' }).click()
-    await page.getByRole('button', { name: 'New invoice' }).click()
+    // PageHead + empty-state both render a "New invoice" button → pick the first.
+    await page.getByRole('button', { name: 'New invoice' }).first().click()
     const modal = page.locator('.modal-overlay')
     await expect(modal).toBeVisible()
 
@@ -125,7 +126,8 @@ test.describe('billing & finance', () => {
     expect(dup.id).toBe(invoiceId)
     expect(scalar<number>(ctx.userData, 'SELECT COUNT(*) FROM invoices')).toBe(1)
 
-    // --- Partial payment through the real modal (৳200 of ৳500). ---
+    // --- Partial payment through the real modal (৳2,000 of ৳5,000). ---
+    // The Amount field is in TAKA; 200_000 poisha = '2000'.
     await page.getByRole('link', { name: 'Payments' }).click()
     await page.getByRole('button', { name: 'Record payment' }).click()
     const modal = page.locator('.modal-overlay')
@@ -133,7 +135,7 @@ test.describe('billing & finance', () => {
     await field(modal, 'Unpaid invoice').fill(invoiceCode)
     await expect(modal.locator('.search-result')).toBeVisible({ timeout: 10_000 })
     await modal.locator('.search-result').first().click()
-    await field(modal, 'Amount').fill('200')
+    await field(modal, 'Amount').fill('2000')
     await field(modal, 'Method').selectOption('bkash')
     await modal.getByRole('button', { name: 'Record payment' }).click()
     await expectToast(page, 'success', 'Payment recorded')
