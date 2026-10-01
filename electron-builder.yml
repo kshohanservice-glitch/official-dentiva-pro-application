@@ -1,0 +1,44 @@
+appId: com.dentiva.pro
+productName: Dentiva Pro
+copyright: © 2026 Shohan Khan
+directories:
+  output: dist
+  buildResources: resources
+files:
+  - out/**/*
+  - package.json
+  - "!**/*.map"
+  - "!node_modules/**/test/**"
+  - "!node_modules/**/docs/**"
+  - "!node_modules/**/README*"
+  - "!node_modules/**/*.md"
+  - "!src/**"
+  - "!tests/**"
+  - "!docs/**"
+  - "!scripts/**"
+  - "!resources/icon-*.png"
+asar: true
+npmRebuild: true
+electronLanguages:
+  - en-US
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-setup.${ext}
+  verifyUpdateCodeSignature: false
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Dentiva Pro
+  installerIcon: resources/icon.ico
+  uninstallerIcon: resources/icon.ico
+  installerHeaderIcon: resources/icon.ico
+  deleteAppDataOnUninstall: false
+fileAssociations: []
+compression: normal

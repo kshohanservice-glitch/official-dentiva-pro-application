@@ -1,0 +1,123 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'arena/**']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # PR events (refs/pull/N/merge) and push events for the same head branch
+  # share one group, so a branch never runs two duplicate suites in parallel
+  # (parallel electron-builder downloads were flaky).
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  windows:
+    name: Windows · typecheck, lint, test, package
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache Electron & electron-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (main + renderer)
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit & integration tests
+        run: npm test
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Package NSIS installer
+        run: npx electron-builder --win --publish never
+
+      - name: Validate artifacts
+        shell: bash
+        run: node scripts/validate-dist.mjs
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dentiva-pro-windows-installer
+          path: |
+            dist/*.exe
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  e2e:
+    name: Windows · Electron e2e (boot + workflows)
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cache Electron & electron-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build (electron-vite)
+        run: npm run build
+
+      - name: Rebuild native modules for Electron
+        run: npm run rebuild:electron
+
+      - name: Electron e2e (boot, auth, clinical, finance, RBAC, backup, print, idle-lock)
+        run: npm run test:e2e
+
+      # Job logs/artifacts may be unreachable from some environments — turn
+      # Playwright's JSON report into check-run annotations (readable via API).
+      - name: Annotate e2e failures
+        if: always()
+        run: node scripts/e2e-annotations.mjs
+
+      - name: Upload e2e screenshots, PDFs and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-artifacts
+          path: |
+            artifacts/e2e/
+            test-results/
+          if-no-files-found: ignore
+          retention-days: 14

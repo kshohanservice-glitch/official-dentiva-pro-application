@@ -1,0 +1,62 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+out/
+dist/
+release/
+*.tsbuildinfo
+
+# Local database / runtime data (never commit application data)
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+data/
+userData/
+
+# Backups and exports (never commit)
+*.dvpbackup
+backups/
+exports/
+
+# Secrets & credentials — never commit
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+activation.local.*
+secrets/
+
+# Logs
+*.log
+logs/
+
+# Test / coverage
+coverage/
+playwright-report/
+test-results/
+.vitest/
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Electron
+*.asar
+
+# Generated icon intermediates (final assets are committed under build/)
+.tmp/
+.cache/
+
+# E2E artifacts (screenshots, PDFs — human review copies)
+artifacts/
